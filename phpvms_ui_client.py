@@ -1360,7 +1360,7 @@ class MainWindow(QMainWindow):
             if arr_icao:
                 self.current_flight_widget.arr_input.setText(str(arr_icao).upper())
             if alt_icao:
-                self.current_flight_widget.arr_input.setText(str(alt_icao).upper())
+                self.current_flight_widget.alt_input.setText(str(alt_icao).upper())
 
             route = general.get("route") or general.get("route_text") or ""
             if route:
