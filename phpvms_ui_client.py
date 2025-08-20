@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
 from PySide6.QtGui import QFont, QIcon, QIntValidator
 import requests
+import re
 
 from udp_bridge import UdpBridge
 from vms_types import Pirep
@@ -528,11 +529,30 @@ class CurrentFlightWidget(QWidget):
 
     def set_fleet(self, fleet: List[Dict[str, Any]]):
         self.aircraft_combo.clear()
-        names = [(ac.get('name') or ac.get('registration') or str(ac.get('id')), ac) for ac in fleet]
+        
+        def _normalize_ac_name(s: Any) -> str:
+            try:
+                s = str(s)
+                if '|' in s:
+                    left, sep, right = s.partition('|')
+                    left = left.strip()
+                    # Remove extraneous spaces between trailing letters and digits (e.g., "PHX 12" -> "PHX12")
+                    left = re.sub(r'([A-Za-z])\s+(\d)', r'\1\2', left)
+                    return f"{left} | {right.strip()}"
+                # Fallback: apply to whole string
+                return re.sub(r'([A-Za-z])\s+(\d)', r'\1\2', s)
+            except Exception:
+                return str(s)
+        
+        names = []
+        for ac in fleet:
+            raw = ac.get('name') or ac.get('registration') or ac.get('id')
+            disp = _normalize_ac_name(raw)
+            names.append((disp, ac))
         names.sort(key=lambda x: x[0])
         self.aircraft_combo.clear()
-        for name, ac in names:
-            self.aircraft_combo.addItem(str(name), userData=ac)
+        for disp, ac in names:
+            self.aircraft_combo.addItem(str(disp), userData=ac)
 
 
 class PirepsWidget(QWidget):
