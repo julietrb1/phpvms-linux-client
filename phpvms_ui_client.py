@@ -172,19 +172,6 @@ class ApiWorker(QThread):
         except Exception as e:
             self.preload_result.emit(False, f"Error during preload: {str(e)}", {})
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 class MainWindow(QMainWindow):
     """Main application window"""
 
