@@ -480,6 +480,9 @@ class CurrentFlightWidget(QWidget):
         self.arr_input = QLineEdit()
         form.addRow("Arrival Airport:", self.arr_input)
 
+        self.alt_input = QLineEdit()
+        form.addRow("Alternate Airport:", self.alt_input)
+
         self.route_text = QTextEdit()
         self.route_text.setPlaceholderText("Enter route (free text)")
         form.addRow("Flight Route:", self.route_text)
@@ -1349,15 +1352,19 @@ class MainWindow(QMainWindow):
         try:
             origin = ((data or {}).get("origin") or {})
             dest = ((data or {}).get("destination") or {})
+            alt = ((data or {}).get("alternate") or {})
             general = ((data or {}).get("general") or {})
             times = ((data or {}).get("times") or {})
 
             dep_icao = origin.get("icao_code") or origin.get("icao") or origin.get("iata_code") or ""
             arr_icao = dest.get("icao_code") or dest.get("icao") or dest.get("iata_code") or ""
+            alt_icao = alt.get("icao_code") or dest.get("icao") or dest.get("iata_code") or ""
             if dep_icao:
                 self.current_flight_widget.dep_input.setText(str(dep_icao).upper())
             if arr_icao:
                 self.current_flight_widget.arr_input.setText(str(arr_icao).upper())
+            if alt_icao:
+                self.current_flight_widget.arr_input.setText(str(alt_icao).upper())
 
             route = general.get("route") or general.get("route_text") or ""
             if route:
@@ -1400,9 +1407,11 @@ class MainWindow(QMainWindow):
         try:
             airline = self.current_flight_widget.airline_combo.currentData()
             aircraft = self.current_flight_widget.aircraft_combo.currentData()
+            flight_type = self.current_flight_widget.flight_type_combo.currentData()
             flight_number = self.current_flight_widget.flight_number_input.text().strip() or None
             dpt = self.current_flight_widget.dep_input.text().strip().upper()
             arr = self.current_flight_widget.arr_input.text().strip().upper()
+            alt = self.current_flight_widget.alt_input.text().strip().upper()
             route = self.current_flight_widget.route_text.toPlainText().strip() or None
             level_text = self.current_flight_widget.level_input.text().strip()
             planned_distance_text = self.current_flight_widget.planned_distance_input.text().strip()
@@ -1413,15 +1422,20 @@ class MainWindow(QMainWindow):
             flight_data: Dict[str, Any] = {
                 "airline_id": int(airline.get('id')) if isinstance(airline, dict) and airline.get('id') else None,
                 "aircraft_id": int(aircraft.get('id')) if isinstance(aircraft, dict) and aircraft.get('id') else None,
+                "flight_type": flight_type,
                 "flight_number": int(flight_number),
                 "dpt_airport_id": dpt,
                 "arr_airport_id": arr,
+                "alt_airport_id": alt,
                 "route": route,
                 "level": level,
                 "planned_distance": planned_distance,
                 "planned_flight_time": planned_flight_time,
                 "source": 1,
-                "source_name": "XPlane12",
+                "source_name": "vmsacars",
+                "fields": {
+                    "Simulator": "X-Plane 12"
+                }
             }
             # Remove None values
             flight_data = {k: v for k, v in flight_data.items() if v is not None}
