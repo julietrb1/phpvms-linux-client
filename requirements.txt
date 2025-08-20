@@ -1,0 +1,6 @@
+# Core dependencies
+PySide6>=6.5.0
+requests>=2.25.0
+
+# Optional: For better date/time handling
+python-dateutil>=2.8.0
