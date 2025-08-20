@@ -17,12 +17,15 @@ from enum import Enum
 
 
 class PirepState(Enum):
-    """PIREP States"""
-    DRAFT = 0
+    """PIREP Workflow States (phpVMS)"""
+    IN_PROGRESS = 0
     PENDING = 1
     ACCEPTED = 2
-    REJECTED = 3
-    CANCELLED = 4
+    CANCELLED = 3
+    DELETED = 4
+    DRAFT = 5
+    REJECTED = 6
+    PAUSED = 7
 
 
 class PirepSource(Enum):
@@ -547,7 +550,7 @@ class PhpVmsApiClient:
     # PIREP ENDPOINTS
     # ==========================================
 
-    def get_pirep(self, pirep_id: int) -> Dict[str, Any]:
+    def get_pirep(self, pirep_id: str) -> Dict[str, Any]:
         """
         Get a specific PIREP
 
@@ -598,7 +601,7 @@ class PhpVmsApiClient:
         """
         return self._post(f'pireps/{pirep_id}/file', json_data=pirep_data)
 
-    def cancel_pirep(self, pirep_id: int) -> Dict[str, Any]:
+    def cancel_pirep(self, pirep_id: str) -> Dict[str, Any]:
         """
         Cancel a PIREP
 
@@ -1014,3 +1017,120 @@ def create_client(base_url: str, api_key: Optional[str] = None, timeout: int = 3
         PhpVmsApiClient instance
     """
     return PhpVmsApiClient(base_url=base_url, api_key=api_key, timeout=timeout)
+
+
+# ==========================================
+# PIREP WORKFLOW SUPPORT
+# ==========================================
+class PirepStatus(Enum):
+    """PIREP Flight Phase Status Codes (phpVMS)"""
+    INITIATED = 'INI'
+    BOARDING = 'BST'
+    DEPARTED = 'OFB'
+    TAXI = 'TXI'
+    TAKEOFF = 'TOF'
+    AIRBORNE = 'TKO'
+    ENROUTE = 'ENR'
+    APPROACH = 'TEN'
+    LANDING = 'LDG'
+    LANDED = 'LAN'
+    ARRIVED = 'ARR'
+    CANCELLED = 'DX'
+    PAUSED = 'PSD'
+
+
+class PirepStateMachine:
+    """Enforces phpVMS PIREP workflow rules on the client side"""
+
+    READ_ONLY_STATES = {PirepState.ACCEPTED.value, PirepState.REJECTED.value, PirepState.CANCELLED.value}
+    NON_CANCELLABLE_STATES = {PirepState.ACCEPTED.value, PirepState.REJECTED.value, PirepState.CANCELLED.value, PirepState.DELETED.value}
+
+    def can_update(self, pirep_state: int) -> bool:
+        return pirep_state not in self.READ_ONLY_STATES
+
+    def can_cancel(self, pirep_state: int) -> bool:
+        return pirep_state not in self.NON_CANCELLABLE_STATES
+
+    def get_next_actions(self, pirep_state: int):
+        if pirep_state == PirepState.IN_PROGRESS.value:
+            return ['update', 'file', 'cancel']
+        elif pirep_state == PirepState.PENDING.value:
+            return ['wait_for_approval']
+        return []
+
+
+class FlightProgressTracker:
+    """Helper to push ACARS and status updates for a PIREP"""
+
+    def __init__(self, client: 'PhpVmsApiClient', pirep_id: int):
+        self.client = client
+        self.pirep_id = pirep_id
+        self.current_phase: str = PirepStatus.INITIATED.value
+
+    def update_phase(self, new_phase: Union[PirepStatus, str], distance: Optional[float] = None, fuel_used: Optional[float] = None) -> Dict[str, Any]:
+        phase_code = new_phase.value if isinstance(new_phase, PirepStatus) else str(new_phase)
+        self.current_phase = phase_code
+        payload: Dict[str, Any] = {"status": phase_code}
+        if distance is not None:
+            payload["distance"] = distance
+        if fuel_used is not None:
+            payload["fuel_used"] = fuel_used
+        return self.client.update_pirep(self.pirep_id, payload)
+
+    def send_position(self, lat: float, lon: float, altitude: Optional[float] = None, heading: Optional[float] = None, gs: Optional[float] = None, sim_time: Optional[int] = None) -> Dict[str, Any]:
+        pos = {
+            "lat": lat,
+            "lon": lon,
+            "altitude": altitude,
+            "heading": heading,
+            "gs": gs,
+            "sim_time": sim_time,
+        }
+        # Remove None values to keep payload concise
+        pos = {k: v for k, v in pos.items() if v is not None}
+        return self.client.post_acars_positions(self.pirep_id, positions=[pos])
+
+    def log_event(self, log: str, sim_time: Optional[int] = None) -> Dict[str, Any]:
+        entry = {"log": log}
+        if sim_time is not None:
+            entry["sim_time"] = sim_time
+        return self.client.post_acars_logs(self.pirep_id, logs=[entry])
+
+    def post_events(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return self.client.post_acars_events(self.pirep_id, events=events)
+
+
+class PirepWorkflowManager:
+    """High-level PIREP workflow orchestration using PhpVmsApiClient"""
+
+    def __init__(self, api_client: 'PhpVmsApiClient'):
+        self.client = api_client
+        self.state_machine = PirepStateMachine()
+
+    def start_flight(self, flight_data: Dict[str, Any]) -> Dict[str, Any]:
+        # Ensure ACARS source by default if not set
+        flight_data = dict(flight_data)
+        flight_data.setdefault("source", 1)
+        pirep = self.client.prefile_pirep(flight_data)
+        return pirep
+
+    def update_flight(self, pirep_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        pirep = self.client.get_pirep(pirep_id)
+        state = pirep.get('state')
+        if state is None:
+            raise PhpVmsApiException("PIREP response missing state", response=pirep)
+        if not self.state_machine.can_update(int(state)):
+            raise PhpVmsApiException("PIREP cannot be updated in current state", response=pirep)
+        return self.client.update_pirep(pirep_id, update_data)
+
+    def complete_flight(self, pirep_id: int, final_data: Dict[str, Any]) -> Dict[str, Any]:
+        return self.client.file_pirep(pirep_id, final_data)
+
+    def cancel_flight(self, pirep_id: str) -> Dict[str, Any]:
+        pirep = self.client.get_pirep(pirep_id)['data']
+        state = pirep.get('state')
+        if state is None:
+            raise PhpVmsApiException("PIREP response missing state", response=pirep)
+        if not self.state_machine.can_cancel(state):
+            raise PhpVmsApiException("PIREP cannot be cancelled in current state", response=pirep)
+        return self.client.cancel_pirep(pirep_id)
