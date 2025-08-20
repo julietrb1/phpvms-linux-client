@@ -46,8 +46,8 @@ class ApiWorker(QThread):
 
     # Signals
     login_result = Signal(bool, str, dict)  # success, message, user_data
-    pireps_result = Signal(bool, str, list)  # success, message, pireps_data
-    airports_result = Signal(bool, str, list)  # success, message, airports_list
+    pireps_result = Signal(bool, str, list, dict)  # success, message, pireps_data, meta
+    airports_result = Signal(bool, str, list, dict)  # success, message, airports_list, meta
     lookup_airport_result = Signal(bool, str, dict)  # success, message, airport_data
     preload_result = Signal(bool, str, dict)  # success, message, {airlines:[], fleet:[]}
 
@@ -65,15 +65,19 @@ class ApiWorker(QThread):
         self.base_url = base_url
         self.api_key = api_key
 
-    def set_pireps_operation(self, client):
+    def set_pireps_operation(self, client, page: int = 1, limit: int = 50):
         """Set up PIREPs fetch operation"""
         self.operation = "pireps"
         self.client = client
+        self._pireps_page = page
+        self._pireps_limit = limit
 
-    def set_airports_operation(self, client):
+    def set_airports_operation(self, client, page: int = 1, limit: int = 50):
         """Set up airports fetch operation"""
         self.operation = "airports"
         self.client = client
+        self._airports_page = page
+        self._airports_limit = limit
 
     def set_lookup_airport_operation(self, client, icao: str):
         """Set up airport lookup operation"""
@@ -103,9 +107,9 @@ class ApiWorker(QThread):
             if self.operation == "login":
                 self.login_result.emit(False, f"Unexpected error: {str(e)}", {})
             elif self.operation == "pireps":
-                self.pireps_result.emit(False, f"Unexpected error: {str(e)}", [])
+                self.pireps_result.emit(False, f"Unexpected error: {str(e)}", [], {})
             elif self.operation == "airports":
-                self.airports_result.emit(False, f"Unexpected error: {str(e)}", [])
+                self.airports_result.emit(False, f"Unexpected error: {str(e)}", [], {})
             elif self.operation == "lookup_airport":
                 self.lookup_airport_result.emit(False, f"Unexpected error: {str(e)}", {})
             elif self.operation == "preload":
@@ -134,24 +138,26 @@ class ApiWorker(QThread):
     def _do_fetch_pireps(self):
         """Fetch PIREPs operation"""
         try:
-            response = self.client.get_user_pireps()
+            response = self.client.get_user_pireps(page=getattr(self, '_pireps_page', 1), limit=getattr(self, '_pireps_limit', 50))
             pireps_data = response.get('data', [])
-            self.pireps_result.emit(True, f"Found {len(pireps_data)} PIREPs", pireps_data)
+            meta = response.get('meta', {}) if isinstance(response, dict) else {}
+            self.pireps_result.emit(True, f"Loaded {len(pireps_data)} PIREPs", pireps_data, meta)
 
         except PhpVmsApiException as e:
-            self.pireps_result.emit(False, f"API Error: {e.message}", [])
+            self.pireps_result.emit(False, f"API Error: {e.message}", [], {})
         except Exception as e:
-            self.pireps_result.emit(False, f"Error fetching PIREPs: {str(e)}", [])
+            self.pireps_result.emit(False, f"Error fetching PIREPs: {str(e)}", [], {})
 
     def _do_fetch_airports(self):
         try:
-            response = self.client.get_airports()
+            response = self.client.get_airports(page=getattr(self, '_airports_page', 1), limit=getattr(self, '_airports_limit', 50))
             airports_data = response.get('data', [])
-            self.airports_result.emit(True, f"Found {len(airports_data)} airports", airports_data)
+            meta = response.get('meta', {}) if isinstance(response, dict) else {}
+            self.airports_result.emit(True, f"Loaded {len(airports_data)} airports", airports_data, meta)
         except PhpVmsApiException as e:
-            self.airports_result.emit(False, f"API Error: {e.message}", [])
+            self.airports_result.emit(False, f"API Error: {e.message}", [], {})
         except Exception as e:
-            self.airports_result.emit(False, f"Error fetching airports: {str(e)}", [])
+            self.airports_result.emit(False, f"Error fetching airports: {str(e)}", [], {})
 
     def _do_lookup_airport(self):
         try:
@@ -329,6 +335,8 @@ class AirportsWidget(QWidget):
 
     refresh_requested = Signal()
     lookup_requested = Signal(str)  # ICAO
+    page_change_requested = Signal(int)
+    page_size_change_requested = Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -379,7 +387,35 @@ class AirportsWidget(QWidget):
         self.table.setSortingEnabled(True)
         layout.addWidget(self.table)
 
+        # Pagination/footer controls
+        footer = QHBoxLayout()
+        self.prev_btn = QPushButton("Prev")
+        self.next_btn = QPushButton("Next")
+        self.page_label = QLabel("Page 1/1")
+        self.page_size_combo = QComboBox()
+        for n in [10, 25, 50, 100]:
+            self.page_size_combo.addItem(str(n), userData=n)
+        self.page_size_combo.setCurrentText("25")
+        self.prev_btn.clicked.connect(lambda: self.page_change_requested.emit(max(1, getattr(self, '_current_page', 1) - 1)))
+        self.next_btn.clicked.connect(lambda: self.page_change_requested.emit(getattr(self, '_current_page', 1) + 1))
+        self.page_size_combo.currentIndexChanged.connect(lambda: self.page_size_change_requested.emit(int(self.page_size_combo.currentText())))
+        footer.addStretch()
+        footer.addWidget(self.prev_btn)
+        footer.addWidget(self.next_btn)
+        footer.addWidget(self.page_label)
+        footer.addWidget(QLabel("Per page:"))
+        footer.addWidget(self.page_size_combo)
+        layout.addLayout(footer)
+
         self.setLayout(layout)
+
+    def update_pagination(self, current_page: int, last_page: int, total: int):
+        self._current_page = max(1, current_page)
+        self._last_page = max(1, last_page)
+        self._total = max(0, total)
+        self.page_label.setText(f"Page {self._current_page}/{self._last_page} ({self._total})")
+        self.prev_btn.setEnabled(self._current_page > 1)
+        self.next_btn.setEnabled(self._current_page < self._last_page)
 
     def _on_lookup_clicked(self):
         icao = self.lookup_input.text().strip().upper()
@@ -507,19 +543,43 @@ class PirepsWidget(QWidget):
     """Widget to display PIREPs table"""
 
     refresh_requested = Signal()
+    page_change_requested = Signal(int)  # new page number
+    page_size_change_requested = Signal(int)  # new page size (limit)
 
     def __init__(self):
         super().__init__()
+        self._current_page = 1
+        self._last_page = 1
+        self._total = 0
+        self._limit = 25
         self.setup_ui()
 
     def setup_ui(self):
         """Set up the PIREPs UI"""
         layout = QVBoxLayout()
 
-        # Header with refresh button
+        # Header with refresh + pagination controls
         header_layout = QHBoxLayout()
         header_layout.addWidget(QLabel("Previous PIREPs"))
         header_layout.addStretch()
+
+        # Pagination controls
+        self.prev_btn = QPushButton("Prev")
+        self.next_btn = QPushButton("Next")
+        self.page_label = QLabel("Page 1/1")
+        self.page_size_combo = QComboBox()
+        for n in [10, 25, 50, 100]:
+            self.page_size_combo.addItem(str(n), userData=n)
+        self.page_size_combo.setCurrentText(str(self._limit))
+        self.prev_btn.clicked.connect(lambda: self.page_change_requested.emit(max(1, self._current_page - 1)))
+        self.next_btn.clicked.connect(lambda: self.page_change_requested.emit(self._current_page + 1))
+        self.page_size_combo.currentIndexChanged.connect(self._on_page_size_changed)
+
+        header_layout.addWidget(self.prev_btn)
+        header_layout.addWidget(self.next_btn)
+        header_layout.addWidget(self.page_label)
+        header_layout.addWidget(QLabel("Per page:"))
+        header_layout.addWidget(self.page_size_combo)
 
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh_requested.emit)
@@ -529,9 +589,9 @@ class PirepsWidget(QWidget):
 
         # PIREPs table
         self.table = QTableWidget()
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels([
-            "Flight", "Route", "Aircraft", "State", "Date", "Flight Time", "Distance"
+            "Route", "State", "Date", "Duration", "Dist. (nm)"
         ])
 
         # Configure table
@@ -545,23 +605,29 @@ class PirepsWidget(QWidget):
 
         self.setLayout(layout)
 
+    def _on_page_size_changed(self):
+        limit = int(self.page_size_combo.currentText())
+        self._limit = limit
+        self.page_size_change_requested.emit(limit)
+
+    def update_pagination(self, current_page: int, last_page: int, total: int):
+        self._current_page = max(1, current_page)
+        self._last_page = max(1, last_page)
+        self._total = max(0, total)
+        self.page_label.setText(f"Page {self._current_page}/{self._last_page} ({self._total})")
+        self.prev_btn.setEnabled(self._current_page > 1)
+        self.next_btn.setEnabled(self._current_page < self._last_page)
+
     def update_pireps(self, pireps_data: List[Pirep]):
         """Update the PIREPs table"""
         self.table.setRowCount(len(pireps_data))
 
         for row, pirep in enumerate(pireps_data):
-            # Flight number
-            flight_number = pirep.get('flight_number', 'N/A')
-            self.table.setItem(row, 1, QTableWidgetItem(flight_number))
-
             # Route
             dep = pirep.get('dpt_airport_id', '')
             arr = pirep.get('arr_airport_id', '')
             route = f"{dep} → {arr}" if dep and arr else "N/A"
-            self.table.setItem(row, 2, QTableWidgetItem(route))
-
-            aircraft_name = pirep.get('aircraft', {}).get('name', '')
-            self.table.setItem(row, 3, QTableWidgetItem(str(aircraft_name) if aircraft_name else 'N/A'))
+            self.table.setItem(row, 0, QTableWidgetItem(route))
 
             # State
             state_value = pirep.get('state', 0)
@@ -569,7 +635,7 @@ class PirepsWidget(QWidget):
                 state_name = PirepState(state_value).name
             except ValueError:
                 state_name = f"Unknown ({state_value})"
-            self.table.setItem(row, 4, QTableWidgetItem(state_name))
+            self.table.setItem(row, 1, QTableWidgetItem(state_name))
 
             # Date
             created_at = pirep.get('created_at', '')
@@ -582,7 +648,7 @@ class PirepsWidget(QWidget):
                     date_str = created_at
             else:
                 date_str = 'N/A'
-            self.table.setItem(row, 5, QTableWidgetItem(date_str))
+            self.table.setItem(row, 2, QTableWidgetItem(date_str))
 
             # Flight time
             flight_time = pirep.get('flight_time', 0)
@@ -592,10 +658,10 @@ class PirepsWidget(QWidget):
                 time_str = f"{hours}h {minutes}m"
             else:
                 time_str = 'N/A'
-            self.table.setItem(row, 6, QTableWidgetItem(time_str))
+            self.table.setItem(row, 3, QTableWidgetItem(time_str))
 
             # Distance
-            distance = pirep.get('distance', 0)
+            distance = pirep.get('distance', {}).get('nmi', -1)
             # Coerce to float safely (API may return a numeric string)
             distance_value: Optional[float]
             try:
@@ -609,8 +675,8 @@ class PirepsWidget(QWidget):
                     distance_value = None
             except Exception:
                 distance_value = None
-            distance_str = f"{distance_value:.0f} nm" if distance_value is not None else 'N/A'
-            self.table.setItem(row, 7, QTableWidgetItem(distance_str))
+            distance_str = f"{distance_value:.0f}" if distance_value is not None else 'N/A'
+            self.table.setItem(row, 4, QTableWidgetItem(distance_str))
 
     def set_refresh_enabled(self, enabled: bool):
         """Enable/disable refresh button"""
@@ -685,6 +751,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.login_widget)
         layout.addWidget(self.tabs)
 
+        # Initialize page size combos from saved settings
+        try:
+            self.pireps_widget.page_size_combo.setCurrentText(str(self._pireps_limit))
+            self.airports_widget.page_size_combo.setCurrentText(str(self._airports_limit))
+        except Exception:
+            pass
+
         # Progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -700,10 +773,16 @@ class MainWindow(QMainWindow):
         self.logout_button.setVisible(False)
         self.logout_button.clicked.connect(self.logout)
         
-        # Internal caches
+        # Internal caches and pagination state
         self._airport_icaos_cache = set()
         self._airports_list = []
         self._airport_lookup_cache: Dict[str, Dict[str, Any]] = {}
+        # Pagination defaults
+        settings = QSettings()
+        self._pireps_limit = int(settings.value("ui/pireps_limit", 25))
+        self._pireps_page = 1
+        self._airports_limit = int(settings.value("ui/airports_limit", 25))
+        self._airports_page = 1
 
     def setup_connections(self):
         """Set up signal connections"""
@@ -712,12 +791,44 @@ class MainWindow(QMainWindow):
 
         # PIREPs widget
         self.pireps_widget.refresh_requested.connect(self.refresh_pireps)
+        self.pireps_widget.page_change_requested.connect(self._on_pireps_page_change)
+        self.pireps_widget.page_size_change_requested.connect(self._on_pireps_page_size_change)
 
         # Airports widget
         self.airports_widget.refresh_requested.connect(self.refresh_airports)
         self.airports_widget.lookup_requested.connect(self.lookup_airport)
+        self.airports_widget.page_change_requested.connect(self._on_airports_page_change)
+        self.airports_widget.page_size_change_requested.connect(self._on_airports_page_size_change)
 
         # Worker signals are connected per-operation when spawning workers
+
+    def _on_pireps_page_change(self, new_page: int):
+        if new_page < 1:
+            return
+        self._pireps_page = new_page
+        self.refresh_pireps()
+
+    def _on_pireps_page_size_change(self, new_limit: int):
+        if new_limit <= 0:
+            return
+        self._pireps_limit = new_limit
+        QSettings().setValue("ui/pireps_limit", new_limit)
+        self._pireps_page = 1
+        self.refresh_pireps()
+
+    def _on_airports_page_change(self, new_page: int):
+        if new_page < 1:
+            return
+        self._airports_page = new_page
+        self.refresh_airports()
+
+    def _on_airports_page_size_change(self, new_limit: int):
+        if new_limit <= 0:
+            return
+        self._airports_limit = new_limit
+        QSettings().setValue("ui/airports_limit", new_limit)
+        self._airports_page = 1
+        self.refresh_airports()
 
     def _create_worker(self) -> ApiWorker:
         """Create a new worker for an operation and wire signals."""
@@ -827,7 +938,7 @@ class MainWindow(QMainWindow):
 
         # Start PIREPs fetch in its own worker thread
         worker = self._create_worker()
-        worker.set_pireps_operation(self.client)
+        worker.set_pireps_operation(self.client, page=getattr(self, '_pireps_page', 1), limit=getattr(self, '_pireps_limit', 25))
         worker.start()
 
     def refresh_airports(self):
@@ -837,7 +948,7 @@ class MainWindow(QMainWindow):
         self.show_progress(True)
         self.airports_widget.set_refresh_enabled(False)
         worker = self._create_worker()
-        worker.set_airports_operation(self.client)
+        worker.set_airports_operation(self.client, page=getattr(self, '_airports_page', 1), limit=getattr(self, '_airports_limit', 25))
         worker.start()
 
     def lookup_airport(self, icao: str):
@@ -855,7 +966,7 @@ class MainWindow(QMainWindow):
         worker.set_lookup_airport_operation(self.client, icao.upper())
         worker.start()
 
-    def on_airports_result(self, success: bool, message: str, airports_data: List[Dict[str, Any]]):
+    def on_airports_result(self, success: bool, message: str, airports_data: List[Dict[str, Any]], meta: Dict[str, Any]):
         self.show_progress(False)
         self.airports_widget.set_refresh_enabled(True)
         if success:
@@ -867,6 +978,18 @@ class MainWindow(QMainWindow):
                 if isinstance(icao, str):
                     self._airport_icaos_cache.add(icao.upper())
             self.airports_widget.update_airports(airports_data)
+            # Update pagination controls based on meta
+            current = int(meta.get('current_page') or meta.get('current') or 1)
+            last = int(meta.get('last_page') or meta.get('last') or (current if len(airports_data) < self._airports_limit else current + 1))
+            total = int(meta.get('total', len(airports_data))) if isinstance(meta, dict) else len(airports_data)
+            self._airports_page = max(1, current)
+            self.airports_widget.update_pagination(current, last, total)
+            per_page = int(meta.get('per_page', self._airports_limit)) if isinstance(meta, dict) else self._airports_limit
+            self._airports_limit = per_page
+            try:
+                self.airports_widget.page_size_combo.setCurrentText(str(per_page))
+            except Exception:
+                pass
             self.status_bar.showMessage(message)
         else:
             QMessageBox.warning(self, "Error", f"Failed to load airports: {message}")
@@ -920,13 +1043,26 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Failed to preload data: {message}")
             self.status_bar.showMessage("Failed to preload data")
 
-    def on_pireps_result(self, success: bool, message: str, pireps_data: List[Pirep]):
+    def on_pireps_result(self, success: bool, message: str, pireps_data: List[Pirep], meta: Dict[str, Any]):
         """Handle PIREPs result"""
         self.show_progress(False)
         self.pireps_widget.set_refresh_enabled(True)
 
         if success:
             self.pireps_widget.update_pireps(pireps_data)
+            # Update pagination controls based on meta
+            current = int(meta.get('current_page') or meta.get('current') or 1)
+            last = int(meta.get('last_page') or meta.get('last') or (current if len(pireps_data) < self._pireps_limit else current + 1))
+            total = int(meta.get('total', len(pireps_data))) if isinstance(meta, dict) else len(pireps_data)
+            self._pireps_page = max(1, current)
+            self.pireps_widget.update_pagination(current, last, total)
+            # Update page size combo to reflect per_page if provided
+            per_page = int(meta.get('per_page', self._pireps_limit)) if isinstance(meta, dict) else self._pireps_limit
+            self._pireps_limit = per_page
+            try:
+                self.pireps_widget.page_size_combo.setCurrentText(str(per_page))
+            except Exception:
+                pass
             self.status_bar.showMessage(message)
         else:
             QMessageBox.warning(self, "Error", f"Failed to load PIREPs: {message}")
