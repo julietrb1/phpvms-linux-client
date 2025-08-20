@@ -17,7 +17,6 @@ class UdpBridge:
     - Binds to 0.0.0.0 (all interfaces) or specified host on a given port (default 47777)
     - Expects JSON payloads with keys:
         {
-          "pirep_id": 1234,
           "status": "ENR",              # optional
           "distance": 217.4,             # optional
           "fuel_used": 452.0,            # optional
@@ -35,18 +34,15 @@ class UdpBridge:
         self.api_client = api_client
         self.host = host
         self.port = int(port)
-        # Provide a callable returning current pirep_id, or an int, else None
+        # Provide a callable returning current pirep_id as string, or a value convertible to string
         self._pirep_id_provider = pirep_id_provider
-        if isinstance(pirep_id_provider, int):
-            pid_val = int(pirep_id_provider)
-            self._pirep_id_provider = lambda: pid_val
 
         self._thread: Optional[threading.Thread] = None
         self._stop_evt = threading.Event()
         self._lock = threading.Lock()
 
-        # Trackers by pirep_id
-        self._trackers: Dict[int, FlightProgressTracker] = {}
+        # Trackers by pirep_id (string)
+        self._trackers: Dict[str, FlightProgressTracker] = {}
 
         # Metrics/state for UI
         self._running: bool = False
@@ -54,7 +50,7 @@ class UdpBridge:
         self._packets_err: int = 0
         self._last_packet_time: Optional[float] = None
         self._last_error: Optional[str] = None
-        self._last_pirep_id: Optional[int] = None
+        self._last_pirep_id: Optional[str] = None
         self._last_status: Optional[str] = None
         self._last_position: Optional[Dict[str, Any]] = None
         self._log: List[str] = []  # rolling log strings
@@ -151,22 +147,20 @@ class UdpBridge:
                 self._append_log(self._last_error)
             return
 
-        pirep_id = payload.get("pirep_id")
-        if not isinstance(pirep_id, int):
-            # tolerate numeric strings
+        # Determine active PIREP ID exclusively from provider (never from plugin payload)
+        pid_str: Optional[str] = None
+        if callable(self._pirep_id_provider):
             try:
-                pirep_id = int(pirep_id)
+                provided = self._pirep_id_provider()
+                if provided is not None:
+                    s = str(provided).strip()
+                    if s:
+                        pid_str = s
             except Exception:
-                # Try provider from UI
-                try:
-                    if callable(self._pirep_id_provider):
-                        provided = self._pirep_id_provider()
-                        if provided is not None:
-                            pirep_id = int(provided)
-                except Exception:
-                    pirep_id = None
+                pid_str = None
+
         # Status and position may be processed even without active PIREP for UI metrics
-        if not isinstance(pirep_id, int):
+        if not pid_str:
             with self._lock:
                 self._last_status = payload.get("status") or self._last_status
                 pos = payload.get("position") or {}
@@ -179,7 +173,7 @@ class UdpBridge:
                 self._append_log("OK: no active PIREP; received status/position")
             return
 
-        tracker = self._get_tracker(pirep_id)
+        tracker = self._get_tracker(pid_str)
         # Status update
         status = payload.get("status")
         # if isinstance(status, str) and status:
@@ -235,15 +229,15 @@ class UdpBridge:
         with self._lock:
             self._packets_ok += 1
             self._last_packet_time = now
-            self._last_pirep_id = int(pirep_id)
+            self._last_pirep_id = pid_str
             # brief concise log line
             s = status or "-"
             p = self._last_position or {}
             self._append_log(
-                f"OK: id={pirep_id} st={s} lat={p.get('lat')} lon={p.get('lon')} alt={p.get('altitude')} gs={p.get('gs')}"
+                f"OK: id={pid_str} st={s} lat={p.get('lat')} lon={p.get('lon')} alt={p.get('altitude')} gs={p.get('gs')}"
             )
 
-    def _get_tracker(self, pirep_id: int) -> FlightProgressTracker:
+    def _get_tracker(self, pirep_id: str) -> FlightProgressTracker:
         # Create tracker on demand
         if pirep_id not in self._trackers:
             self._trackers[pirep_id] = FlightProgressTracker(self.api_client, pirep_id)

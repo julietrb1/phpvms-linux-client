@@ -1064,7 +1064,7 @@ class PirepStateMachine:
 class FlightProgressTracker:
     """Helper to push ACARS and status updates for a PIREP"""
 
-    def __init__(self, client: 'PhpVmsApiClient', pirep_id: int):
+    def __init__(self, client: 'PhpVmsApiClient', pirep_id: Union[str, int]):
         self.client = client
         self.pirep_id = pirep_id
         self.current_phase: str = PirepStatus.INITIATED.value
