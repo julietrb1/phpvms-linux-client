@@ -15,21 +15,21 @@ Requirements:
 - phpvms_api_client.py (in the same directory)
 """
 
-import sys
-from typing import Optional, List, Dict, Any
 import json
+import re
+import sys
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 
+import requests
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
+from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
     QMessageBox, QStatusBar, QGroupBox, QFormLayout, QTextEdit,
     QHeaderView, QProgressBar, QSplitter, QTabWidget, QComboBox
 )
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
-from PySide6.QtGui import QFont, QIcon, QIntValidator
-import requests
-import re
 
 from udp_bridge import UdpBridge
 from vms_types import Pirep
@@ -901,6 +901,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._active_pirep_id = None
         self.client = None
         self.user_data = None
         # Active workers list to keep references until finished
@@ -1426,6 +1427,7 @@ class MainWindow(QMainWindow):
                 "level": level,
                 "planned_distance": planned_distance,
                 "planned_flight_time": planned_flight_time,
+                "source": 1,
                 "source_name": "XPlane12",
             }
             # Remove None values

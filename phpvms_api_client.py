@@ -1108,9 +1108,7 @@ class PirepWorkflowManager:
         self.state_machine = PirepStateMachine()
 
     def start_flight(self, flight_data: Dict[str, Any]) -> Dict[str, Any]:
-        # Ensure ACARS source by default if not set
         flight_data = dict(flight_data)
-        flight_data.setdefault("source", 1)
         pirep = self.client.prefile_pirep(flight_data)
         return pirep
 
