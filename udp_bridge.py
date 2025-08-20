@@ -198,26 +198,27 @@ class UdpBridge:
 
         # Position update
         pos = payload.get("position")
-        # if isinstance(pos, dict):
-        #     try:
-        #         tracker.send_position(
-        #             lat=float(pos["lat"]),
-        #             lon=float(pos["lon"]),
-        #             altitude=pos.get("altitude"),
-        #             heading=pos.get("heading"),
-        #             gs=pos.get("gs"),
-        #             sim_time=pos.get("sim_time"),
-        #         )
-        #     except Exception as e:
-        #         with self._lock:
-        #             self._packets_err += 1
-        #             self._last_error = f"send_position: {e}"
-        #             self._append_log(self._last_error)
-        #     else:
-        #         with self._lock:
-        #             self._last_position = {
-        #                 k: pos.get(k) for k in ("lat", "lon", "altitude", "heading", "gs", "sim_time")
-        #             }
+        if isinstance(pos, dict):
+            try:
+                alt_val = pos.get("altitude") if pos.get("altitude") is not None else pos.get("altitude_msl")
+                tracker.send_position(
+                    lat=float(pos["lat"]),
+                    lon=float(pos["lon"]),
+                    altitude=alt_val,
+                    heading=pos.get("heading"),
+                    gs=pos.get("gs"),
+                    sim_time=pos.get("sim_time"),
+                )
+            except Exception as e:
+                with self._lock:
+                    self._packets_err += 1
+                    self._last_error = f"send_position: {e}"
+                    self._append_log(self._last_error)
+            else:
+                with self._lock:
+                    self._last_position = {
+                        k: pos.get(k) for k in ("lat", "lon", "altitude", "heading", "gs", "sim_time")
+                    }
 
         # Events/logs
         events = payload.get("events")

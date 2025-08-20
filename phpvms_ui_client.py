@@ -1500,9 +1500,15 @@ class MainWindow(QMainWindow):
             if level_text != "":
                 final_data["level"] = int(level_text)
             if planned_distance_text != "":
-                final_data["planned_distance"] = int(planned_distance_text)
+                val = int(planned_distance_text)
+                final_data["planned_distance"] = val
+                # Provide distance for filing per server tests (nm)
+                final_data["distance"] = val
             if planned_time_text != "":
-                final_data["planned_flight_time"] = int(planned_time_text)
+                valt = int(planned_time_text)
+                final_data["planned_flight_time"] = valt
+                # Provide flight_time for filing (minutes)
+                final_data["flight_time"] = valt
         except Exception:
             pass
         final_data = {k: v for k, v in final_data.items() if v is not None}

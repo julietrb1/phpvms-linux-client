@@ -190,7 +190,7 @@ positions = [
         "sim_time": "2023-12-01T15:30:00Z"
     }
 ]
-client.post_acars_positions(789, positions)
+client.post_acars_position(789, positions)
 
 # Post log entries
 logs = [

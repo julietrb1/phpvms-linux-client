@@ -586,7 +586,8 @@ class PhpVmsApiClient:
         Returns:
             Dict containing updated PIREP data
         """
-        return self._put(f'pireps/{pirep_id}', json_data=pirep_data)
+        # phpVMS tests expect POST to /pireps/{id}/update
+        return self._post(f'pireps/{pirep_id}/update', json_data=pirep_data)
 
     def file_pirep(self, pirep_id: int, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -770,7 +771,7 @@ class PhpVmsApiClient:
         """
         return self._get(f'acars/{pirep_id}')
 
-    def post_acars_positions(self, pirep_id: int, positions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def post_acars_position(self, pirep_id: int, positions: Dict[str, Any]) -> Dict[str, Any]:
         """
         Post ACARS position updates for a PIREP
 
@@ -781,7 +782,8 @@ class PhpVmsApiClient:
         Returns:
             Dict containing response
         """
-        return self._post(f'acars/{pirep_id}/position', json_data={'positions': positions})
+        # phpVMS tests expect /pireps/{id}/acars/position
+        return self._post(f'pireps/{pirep_id}/acars/position', json_data={'positions': positions})
 
     def post_acars_logs(self, pirep_id: int, logs: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -1088,7 +1090,7 @@ class FlightProgressTracker:
         }
         # Remove None values to keep payload concise
         pos = {k: v for k, v in pos.items() if v is not None}
-        return self.client.post_acars_positions(self.pirep_id, positions=[pos])
+        return self.client.post_acars_position(self.pirep_id, positions=pos)
 
     def log_event(self, log: str, sim_time: Optional[int] = None) -> Dict[str, Any]:
         entry = {"log": log}

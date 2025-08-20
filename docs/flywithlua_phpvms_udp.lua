@@ -80,7 +80,7 @@ end
 -- Datarefs
 -- =====================
 -- Position
-dataref("gs_mps", "sim/flightmodel/position/groundspeed", "readonly")     -- m/s
+dataref("gs_ms", "sim/flightmodel/position/groundspeed", "readonly")     -- m/s
 -- Flight state
 dataref("on_ground", "sim/flightmodel/failures/onground_any", "readonly")
 dataref("eng1_running", "sim/flightmodel/engine/ENGN_running", "readonly", 0)
@@ -104,11 +104,11 @@ end
 local function detect_status()
   if paused == 1 then return "PSD" end
   if on_ground == 1 and eng1_running == 0 then return "INI" end
-  if on_ground == 1 and eng1_running == 1 and knots(gs_mps) < 1 then return "BST" end
-  if on_ground == 1 and knots(gs_mps) >= 1.5 then return "TXI" end
+  if on_ground == 1 and eng1_running == 1 and knots(gs_ms) < 1 then return "BST" end
+  if on_ground == 1 and knots(gs_ms) >= 1.5 then return "TXI" end
   if on_ground == 0 and radalt_ft < 100 then return "TOF" end
   if on_ground == 0 and radalt_ft >= 100 then return "ENR" end
-  if on_ground == 1 and knots(gs_mps) < 1 then return "ARR" end
+  if on_ground == 1 and knots(gs_ms) < 1 then return "ARR" end
   return last_status
 end
 
@@ -125,7 +125,7 @@ local function build_payload()
       lat = LATITUDE,
       lon = LONGITUDE,
       altitude = feet(ELEVATION),
-      gs = knots(gs_mps),
+      gs = knots(gs_ms),
       sim_time = now(),
     }
   }
