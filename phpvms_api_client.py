@@ -8,12 +8,12 @@ Author: Generated for phpVMS API
 Version: 1.0.0
 """
 
-import requests
 import json
-from typing import Dict, List, Optional, Union, Any
 from dataclasses import dataclass, asdict
-from datetime import datetime
 from enum import Enum
+from typing import Dict, List, Optional, Union, Any
+
+import requests
 
 
 class PirepState(Enum):
@@ -434,103 +434,6 @@ class PhpVmsApiClient:
         """
         return self._get('user', params=params)
 
-    def get_user(self, user_id: int) -> Dict[str, Any]:
-        """
-        Get a specific user's profile
-
-        Args:
-            user_id: The user ID
-
-        Returns:
-            Dict containing user data
-        """
-        return self._get(f'users/{user_id}')
-
-    def get_user_bids(self, user_id: Optional[int] = None, **params) -> Dict[str, Any]:
-        """
-        Get user's flight bids
-
-        Args:
-            user_id: User ID (optional, defaults to current user)
-            **params: Additional parameters (with)
-
-        Returns:
-            Dict containing bid data
-        """
-        endpoint = 'user/bids'
-        if user_id:
-            params['id'] = user_id
-        return self._get(endpoint, params=params)
-
-    def add_bid(self, flight_id: int, aircraft_id: Optional[int] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Add a flight bid
-
-        Args:
-            flight_id: The flight ID to bid on
-            aircraft_id: Optional aircraft ID
-            user_id: User ID (optional, defaults to current user)
-
-        Returns:
-            Dict containing bid data
-        """
-        data = {'flight_id': flight_id}
-        if aircraft_id:
-            data['aircraft_id'] = aircraft_id
-        if user_id:
-            data['id'] = user_id
-
-        return self._put('user/bids', json_data=data)
-
-    def remove_bid(self, flight_id: Optional[int] = None, bid_id: Optional[int] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Remove a flight bid
-
-        Args:
-            flight_id: The flight ID (optional if bid_id provided)
-            bid_id: The bid ID (optional if flight_id provided)
-            user_id: User ID (optional, defaults to current user)
-
-        Returns:
-            Dict containing response
-        """
-        params = {}
-        if flight_id:
-            params['flight_id'] = flight_id
-        if bid_id:
-            params['bid_id'] = bid_id
-        if user_id:
-            params['id'] = user_id
-
-        return self._delete('user/bids', params=params)
-
-    def get_bid(self, bid_id: int) -> Dict[str, Any]:
-        """
-        Get a specific bid
-
-        Args:
-            bid_id: The bid ID
-
-        Returns:
-            Dict containing bid data
-        """
-        return self._get(f'user/bids/{bid_id}')
-
-    def get_user_fleet(self, user_id: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Get fleet/subfleets a user is allowed to access
-
-        Args:
-            user_id: User ID (optional, defaults to current user)
-
-        Returns:
-            Dict containing fleet data
-        """
-        params = {}
-        if user_id:
-            params['id'] = user_id
-        return self._get('user/fleet', params=params)
-
     def get_user_pireps(self, user_id: Optional[int] = None, **params) -> Dict[str, Any]:
         """
         Get user's pilot reports
@@ -576,7 +479,7 @@ class PhpVmsApiClient:
         """
         return self._post('pireps/prefile', json_data=pirep_data)
 
-    def update_pirep(self, pirep_id: int, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
+    def update_pirep(self, pirep_id: str, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Update an existing PIREP
         Args:
@@ -586,7 +489,6 @@ class PhpVmsApiClient:
         Returns:
             Dict containing updated PIREP data
         """
-        # phpVMS tests expect POST to /pireps/{id}/update
         return self._post(f'pireps/{pirep_id}/update', json_data=pirep_data)
 
     def file_pirep(self, pirep_id: int, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -663,30 +565,6 @@ class PhpVmsApiClient:
             Dict containing fields data
         """
         return self._post(f'pireps/{pirep_id}/fields', json_data={'fields': fields})
-
-    def get_pirep_finances(self, pirep_id: int) -> Dict[str, Any]:
-        """
-        Get financial transactions for a PIREP
-
-        Args:
-            pirep_id: The PIREP ID
-
-        Returns:
-            Dict containing financial data
-        """
-        return self._get(f'pireps/{pirep_id}/finances')
-
-    def recalculate_pirep_finances(self, pirep_id: int) -> Dict[str, Any]:
-        """
-        Recalculate finances for a PIREP
-
-        Args:
-            pirep_id: The PIREP ID
-
-        Returns:
-            Dict containing updated financial data
-        """
-        return self._post(f'pireps/{pirep_id}/finances/recalculate')
 
     def get_pirep_route(self, pirep_id: int) -> Dict[str, Any]:
         """
@@ -864,18 +742,6 @@ class PhpVmsApiClient:
         """
         return self._get(f'airports/{airport_id}')
 
-    def lookup_airport(self, airport_icao: str) -> Dict[str, Any]:
-        """
-        Do a lookup, via vaCentral, for the airport information
-
-        Args:
-            airport_icao: The airport ICAO code
-
-        Returns:
-            Dict containing airport data
-        """
-        return self._get(f'airports/{airport_icao}/lookup')
-
     # ==========================================
     # FLEET ENDPOINTS
     # ==========================================
@@ -900,70 +766,6 @@ class PhpVmsApiClient:
             Dict containing aircraft data
         """
         return self._get(f'fleet/{aircraft_id}')
-
-    # ==========================================
-    # NEWS ENDPOINTS
-    # ==========================================
-
-    def get_news(self) -> Dict[str, Any]:
-        """
-        Get news/announcements
-
-        Returns:
-            Dict containing news data
-        """
-        return self._get('news')
-
-    def get_news_item(self, news_id: int) -> Dict[str, Any]:
-        """
-        Get a specific news item
-
-        Args:
-            news_id: The news ID
-
-        Returns:
-            Dict containing news data
-        """
-        return self._get(f'news/{news_id}')
-
-    # ==========================================
-    # SETTINGS ENDPOINTS
-    # ==========================================
-
-    def get_settings(self) -> Dict[str, Any]:
-        """
-        Get system settings
-
-        Returns:
-            Dict containing settings data
-        """
-        return self._get('settings')
-
-    # ==========================================
-    # STATUS ENDPOINTS
-    # ==========================================
-
-    def get_status(self) -> Dict[str, Any]:
-        """
-        Get system status
-
-        Returns:
-            Dict containing status data
-        """
-        return self._get('status')
-
-    # ==========================================
-    # MAINTENANCE ENDPOINTS
-    # ==========================================
-
-    def get_maintenance_status(self) -> Dict[str, Any]:
-        """
-        Get maintenance status
-
-        Returns:
-            Dict containing maintenance data
-        """
-        return self._get('maintenance')
 
     # ==========================================
     # UTILITY METHODS
@@ -1114,7 +916,7 @@ class PirepWorkflowManager:
         pirep = self.client.prefile_pirep(flight_data)
         return pirep
 
-    def update_flight(self, pirep_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
+    def update_flight(self, pirep_id: str, update_data: Dict[str, Any]) -> Dict[str, Any]:
         pirep = self.client.get_pirep(pirep_id)
         state = pirep.get('state')
         if state is None:

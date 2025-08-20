@@ -16,32 +16,26 @@ Requirements:
 """
 
 import json
-import re
 import sys
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 import requests
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
-from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
-    QMessageBox, QStatusBar, QGroupBox, QFormLayout, QTextEdit,
-    QHeaderView, QProgressBar, QSplitter, QTabWidget, QComboBox
+    QLabel, QPushButton, QMessageBox, QStatusBar, QProgressBar, QSplitter, QTabWidget
 )
 
-from udp_bridge import UdpBridge
-from vms_types import Pirep
-# Widgets moved to separate module for cleaner structure
-from login_widget import LoginWidget
-from user_info_widget import UserInfoWidget
 from airports_widget import AirportsWidget
-from current_flight_widget import CurrentFlightWidget
-from pireps_widget import PirepsWidget
 from bridge_status_widget import BridgeStatusWidget
+from current_flight_widget import CurrentFlightWidget
+from login_widget import LoginWidget
+from pireps_widget import PirepsWidget
+from udp_bridge import UdpBridge
+from user_info_widget import UserInfoWidget
+from vms_types import Pirep
 
-# Import our phpVMS API client
 try:
     from phpvms_api_client import create_client, PhpVmsApiException, PirepState, PirepWorkflowManager
 except ImportError as e:

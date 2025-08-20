@@ -142,7 +142,6 @@ class UdpBridge:
                 self._append_log(self._last_error)
             return
 
-        # Update last-seen status/position for UI regardless of handlers
         status = payload.get("status")
         if isinstance(status, str) and status:
             with self._lock:
@@ -152,7 +151,6 @@ class UdpBridge:
             with self._lock:
                 self._last_position = {k: pos.get(k) for k in ("lat", "lon", "altitude", "heading", "gs", "sim_time")}
 
-        # Invoke handlers (no PIREP ID is referenced here)
         try:
             if isinstance(status, str) and status and callable(self._status_handler):
                 self._status_handler(status, payload.get("distance"), payload.get("fuel_used"))
@@ -163,7 +161,6 @@ class UdpBridge:
                 self._append_log(self._last_error)
         try:
             if isinstance(pos, dict) and callable(self._position_handler):
-                # Normalize altitude from either altitude or altitude_msl
                 alt_val = pos.get("altitude") if pos.get("altitude") is not None else pos.get("altitude_msl")
                 pos_norm = dict(pos)
                 if alt_val is not None:
