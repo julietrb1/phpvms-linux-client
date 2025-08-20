@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
 from PySide6.QtGui import QFont, QIcon, QIntValidator
+import requests
 
 from udp_bridge import UdpBridge
 from vms_types import Pirep
@@ -429,6 +430,24 @@ class CurrentFlightWidget(QWidget):
 
         form = QFormLayout()
 
+        # SimBrief import controls
+        simbrief_row = QHBoxLayout()
+        self.simbrief_id_input = QLineEdit()
+        self.simbrief_id_input.setPlaceholderText("SimBrief ID (numeric)")
+        self.simbrief_id_input.setValidator(QIntValidator(0, 99999999, self))
+        # Load cached SimBrief user id
+        try:
+            sb_id = QSettings().value("simbrief/userid", "")
+            if sb_id:
+                self.simbrief_id_input.setText(str(sb_id))
+        except Exception:
+            pass
+        self.import_simbrief_button = QPushButton("Import SimBrief")
+        simbrief_row.addWidget(self.simbrief_id_input)
+        simbrief_row.addWidget(self.import_simbrief_button)
+        simbrief_row.addStretch()
+        form.addRow("SimBrief:", simbrief_row)
+
         self.airline_combo = QComboBox()
         form.addRow("Airline:", self.airline_combo)
 
@@ -813,6 +832,53 @@ class BridgeStatusWidget(QWidget):
 class MainWindow(QMainWindow):
     """Main application window"""
 
+    @staticmethod
+    def _parse_simbrief_ete_to_minutes(value: Any) -> Optional[int]:
+        try:
+            if value is None:
+                return None
+            # If numeric, assume minutes if reasonable; if big, assume seconds
+            if isinstance(value, (int, float)):
+                v = int(value)
+                if v > 0 and v < 60*24*24:
+                    return v
+                # If too big, guess it's seconds
+                return int(round(v / 60))
+            if not isinstance(value, str):
+                return None
+            s = value.strip()
+            if not s:
+                return None
+            # ISO8601 like PT1H30M or PT90M
+            if s.upper().startswith('PT'):
+                hours = 0
+                minutes = 0
+                import re
+                h = re.search(r"(\d+)H", s.upper())
+                m = re.search(r"(\d+)M", s.upper())
+                if h:
+                    hours = int(h.group(1))
+                if m:
+                    minutes = int(m.group(1))
+                return hours*60 + minutes
+            # HH:MM[:SS]
+            if ':' in s:
+                parts = s.split(':')
+                if len(parts) >= 2:
+                    hh = int(parts[0]) if parts[0] else 0
+                    mm = int(parts[1]) if parts[1] else 0
+                    return hh*60 + mm
+            # "0130" -> 1h30m style
+            if s.isdigit() and len(s) in (3,4):
+                hh = int(s[:-2])
+                mm = int(s[-2:])
+                return hh*60 + mm
+            # Fallback: try int directly
+            return int(s)
+        except Exception:
+            return None
+    """Main application window"""
+
     def __init__(self):
         super().__init__()
         self.client = None
@@ -958,6 +1024,7 @@ class MainWindow(QMainWindow):
         self.current_flight_widget.prefile_button.clicked.connect(self.on_prefile_clicked)
         self.current_flight_widget.file_button.clicked.connect(self.on_file_clicked)
         self.current_flight_widget.cancel_button.clicked.connect(self.on_cancel_clicked)
+        self.current_flight_widget.import_simbrief_button.clicked.connect(self.on_import_simbrief_clicked)
 
         # Left panel actions for PIREPs
         self.pireps_refresh_btn.clicked.connect(self.refresh_pireps)
@@ -1228,6 +1295,84 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Failed to load PIREPs: {message}")
             self.status_bar.showMessage("Failed to load PIREPs")
 
+    def on_import_simbrief_clicked(self):
+        """Fetch SimBrief OFP JSON and populate current flight fields."""
+        try:
+            sb_id = self.current_flight_widget.simbrief_id_input.text().strip()
+            if not sb_id:
+                QMessageBox.information(self, "SimBrief", "Please enter your SimBrief ID.")
+                return
+            # Persist the SimBrief ID
+            try:
+                QSettings().setValue("simbrief/userid", sb_id)
+            except Exception:
+                pass
+            # Build URL
+            url = f"https://www.simbrief.com/api/xml.fetcher.php?userid={sb_id}&json=1"
+            self.status_bar.showMessage("Importing SimBrief...")
+            self.show_progress(True)
+            # Disable import button
+            try:
+                self.current_flight_widget.import_simbrief_button.setEnabled(False)
+            except Exception:
+                pass
+            resp = requests.get(url, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            self.show_progress(False)
+            try:
+                self.current_flight_widget.import_simbrief_button.setEnabled(True)
+            except Exception:
+                pass
+            QMessageBox.warning(self, "SimBrief Import Failed", str(e))
+            self.status_bar.showMessage("SimBrief import failed")
+            return
+        finally:
+            pass
+
+        # Parse and populate fields
+        try:
+            origin = ((data or {}).get("origin") or {})
+            dest = ((data or {}).get("destination") or {})
+            general = ((data or {}).get("general") or {})
+            times = ((data or {}).get("times") or {})
+
+            dep_icao = origin.get("icao_code") or origin.get("icao") or origin.get("iata_code") or ""
+            arr_icao = dest.get("icao_code") or dest.get("icao") or dest.get("iata_code") or ""
+            if dep_icao:
+                self.current_flight_widget.dep_input.setText(str(dep_icao).upper())
+            if arr_icao:
+                self.current_flight_widget.arr_input.setText(str(arr_icao).upper())
+
+            route = general.get("route") or general.get("route_text") or ""
+            if route:
+                self.current_flight_widget.route_text.setPlainText(str(route))
+
+            init_alt = general.get("initial_altitude")
+            if init_alt is not None:
+                self.current_flight_widget.level_input.setText(str(init_alt))
+
+            rdist = general.get("route_distance")
+            try:
+                if rdist is not None and str(rdist).strip() != "":
+                    self.current_flight_widget.planned_distance_input.setText(str(int(float(rdist))))
+            except Exception:
+                pass
+
+            ete_val = int(times.get("est_time_enroute")) / 60
+            minutes = self._parse_simbrief_ete_to_minutes(ete_val)
+            if minutes is not None:
+                self.current_flight_widget.planned_time_input.setText(str(int(minutes)))
+
+            self.status_bar.showMessage("SimBrief OFP imported")
+        finally:
+            self.show_progress(False)
+            try:
+                self.current_flight_widget.import_simbrief_button.setEnabled(True)
+            except Exception:
+                pass
+
     def on_prefile_clicked(self):
         if not self.client:
             QMessageBox.information(self, "Not logged in", "Please login first.")
@@ -1245,7 +1390,6 @@ class MainWindow(QMainWindow):
             dpt = self.current_flight_widget.dep_input.text().strip().upper()
             arr = self.current_flight_widget.arr_input.text().strip().upper()
             route = self.current_flight_widget.route_text.toPlainText().strip() or None
-            # Optional integer fields from UI
             level_text = self.current_flight_widget.level_input.text().strip()
             planned_distance_text = self.current_flight_widget.planned_distance_input.text().strip()
             planned_time_text = self.current_flight_widget.planned_time_input.text().strip()
