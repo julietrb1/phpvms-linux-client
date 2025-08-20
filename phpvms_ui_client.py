@@ -455,7 +455,6 @@ class CurrentFlightWidget(QWidget):
         form.addRow("Code:", self.code_input)
 
         self.flight_type_combo = QComboBox()
-        # Populate with provided constants
         flight_types = [
             ("J", "Scheduled Pax"), ("F", "Scheduled Cargo"), ("C", "Charter Pax Only"),
             ("A", "Additional Cargo"), ("E", "VIP"), ("G", "Additional Pax"),
@@ -489,17 +488,17 @@ class CurrentFlightWidget(QWidget):
 
         # New integer fields
         self.level_input = QLineEdit()
-        self.level_input.setPlaceholderText("e.g., 350 (flight level)")
+        self.level_input.setPlaceholderText("ft")
         self.level_input.setValidator(QIntValidator(0, 9999, self))
         form.addRow("Level:", self.level_input)
 
         self.planned_distance_input = QLineEdit()
-        self.planned_distance_input.setPlaceholderText("nm (e.g., 425)")
+        self.planned_distance_input.setPlaceholderText("nm")
         self.planned_distance_input.setValidator(QIntValidator(0, 100000, self))
         form.addRow("Planned Distance:", self.planned_distance_input)
 
         self.planned_time_input = QLineEdit()
-        self.planned_time_input.setPlaceholderText("minutes (e.g., 95)")
+        self.planned_time_input.setPlaceholderText("minutes")
         self.planned_time_input.setValidator(QIntValidator(0, 100000, self))
         form.addRow("Planned Flight Time:", self.planned_time_input)
 
@@ -914,7 +913,7 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         """Set up the main UI"""
         self.setWindowTitle("phpVMS API Client")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(800, 700)
 
         # Central widget
         central_widget = QWidget()
@@ -1319,7 +1318,6 @@ class MainWindow(QMainWindow):
             if not sb_id:
                 QMessageBox.information(self, "SimBrief", "Please enter your SimBrief ID.")
                 return
-            # Persist the SimBrief ID
             try:
                 QSettings().setValue("simbrief/userid", sb_id)
             except Exception:
@@ -1328,7 +1326,6 @@ class MainWindow(QMainWindow):
             url = f"https://www.simbrief.com/api/xml.fetcher.php?userid={sb_id}&json=1"
             self.status_bar.showMessage("Importing SimBrief...")
             self.show_progress(True)
-            # Disable import button
             try:
                 self.current_flight_widget.import_simbrief_button.setEnabled(False)
             except Exception:
@@ -1348,7 +1345,6 @@ class MainWindow(QMainWindow):
         finally:
             pass
 
-        # Parse and populate fields
         try:
             origin = ((data or {}).get("origin") or {})
             dest = ((data or {}).get("destination") or {})
