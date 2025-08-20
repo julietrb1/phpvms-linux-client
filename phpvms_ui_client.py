@@ -229,23 +229,20 @@ class LoginWidget(QWidget):
         self.setLayout(layout)
 
     def on_login_clicked(self):
-        """Handle login button click"""
         base_url = self.base_url_input.text().strip()
         api_key = self.api_key_input.text().strip()
 
         if not base_url:
-            QMessageBox.warning(self, "Error", "Please enter a base URL")
+            QMessageBox.warning(self, "Error", "Enter base URL")
             return
 
         if not api_key:
-            QMessageBox.warning(self, "Error", "Please enter an API key")
+            QMessageBox.warning(self, "Error", "Enter API key")
             return
 
-        # Ensure URL has proper format
         if not base_url.startswith(('http://', 'https://')):
             base_url = 'https://' + base_url
 
-        # Cache credentials (API key is sensitive; store unencrypted per requirements)
         settings = QSettings()
         settings.setValue("api/base_url", base_url)
         settings.setValue("api/api_key", api_key)
@@ -253,24 +250,20 @@ class LoginWidget(QWidget):
         self.login_requested.emit(base_url, api_key)
 
     def set_login_enabled(self, enabled: bool):
-        """Enable/disable login controls"""
         self.login_button.setEnabled(enabled)
         self.base_url_input.setEnabled(enabled)
         self.api_key_input.setEnabled(enabled)
 
 
 class UserInfoWidget(QWidget):
-    """Widget to display user information"""
 
     def __init__(self):
         super().__init__()
         self.setup_ui()
 
     def setup_ui(self):
-        """Set up the user info UI"""
         layout = QVBoxLayout()
 
-        # User info group
         self.user_group = QGroupBox("User Information")
         user_layout = QFormLayout()
 
@@ -292,7 +285,6 @@ class UserInfoWidget(QWidget):
         self.setLayout(layout)
 
     def update_user_info(self, user_data: Dict[str, Any]):
-        """Update the user information display"""
         self.name_label.setText(user_data.get('name', 'Unknown'))
         self.rank_label.setText(str(user_data.get('rank', {}).get('name', 'Unknown')))
         self.flights_label.setText(str(user_data.get('flights', 0)))
