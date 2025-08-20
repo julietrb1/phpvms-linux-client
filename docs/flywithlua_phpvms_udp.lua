@@ -5,7 +5,7 @@
 -- =====================
 -- User configuration
 -- =====================
-local HOST = "10.0.0.132"
+local HOST = "127.0.0.1"
 local PORT = 47777         -- must match the Python client's UDP bridge port
 local SEND_INTERVAL = 0.5  -- minimum seconds between sends (coarse throttle)
 
