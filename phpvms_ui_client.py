@@ -893,6 +893,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.tabs = None
+        self.bridge_status_widget = None
         self._active_pirep_id = None
         self.client = None
         self.user_data = None
@@ -955,14 +957,13 @@ class MainWindow(QMainWindow):
         # Tab widget (created but added after login)
         self.tabs = QTabWidget()
         self.tabs.addTab(self.current_flight_widget, "Current flight")
-        self.tabs.addTab(self.airports_widget, "Airports")
         flights_info_container = QWidget()
         fic_layout = QVBoxLayout()
         fic_layout.setContentsMargins(0, 0, 0, 0)
         fic_layout.addWidget(self.splitter)
         flights_info_container.setLayout(fic_layout)
         self.tabs.addTab(flights_info_container, "PIREPs")
-        # Bridge status tab (added now, but visible after login along with others)
+        self.tabs.addTab(self.airports_widget, "Airports")
         self.bridge_status_widget = BridgeStatusWidget()
         self.tabs.addTab(self.bridge_status_widget, "Status")
         self.tabs.setVisible(False)
