@@ -561,7 +561,9 @@ class PhpVmsApiClient:
 
     def prefile_pirep(self, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Create a new PIREP in prefile state
+        Create a new PIREP and place it in a "inprogress" and "prefile" state
+        Once ACARS updates are being processed, then it can go into an 'ENROUTE'
+        status, and whatever other statuses may be defined
 
         Args:
             pirep_data: PIREP data dictionary
@@ -573,8 +575,7 @@ class PhpVmsApiClient:
 
     def update_pirep(self, pirep_id: int, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Update a PIREP
-
+        Update an existing PIREP
         Args:
             pirep_id: The PIREP ID
             pirep_data: Updated PIREP data
@@ -586,7 +587,7 @@ class PhpVmsApiClient:
 
     def file_pirep(self, pirep_id: int, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        File/submit a PIREP
+        File the PIREP
 
         Args:
             pirep_id: The PIREP ID
@@ -858,6 +859,18 @@ class PhpVmsApiClient:
         """
         return self._get(f'airports/{airport_id}')
 
+    def lookup_airport(self, airport_icao: str) -> Dict[str, Any]:
+        """
+        Do a lookup, via vaCentral, for the airport information
+
+        Args:
+            airport_icao: The airport ICAO code
+
+        Returns:
+            Dict containing airport data
+        """
+        return self._get(f'airports/{airport_icao}/lookup')
+
     # ==========================================
     # FLEET ENDPOINTS
     # ==========================================
@@ -1001,30 +1014,3 @@ def create_client(base_url: str, api_key: Optional[str] = None, timeout: int = 3
         PhpVmsApiClient instance
     """
     return PhpVmsApiClient(base_url=base_url, api_key=api_key, timeout=timeout)
-
-
-# ==========================================
-# EXAMPLE USAGE
-# ==========================================
-
-if __name__ == "__main__":
-    # Example usage
-    client = create_client("https://your-phpvms.com", api_key="your-api-key")
-
-    try:
-        # Get all flights
-        flights = client.get_flights()
-        print(f"Found {len(flights.get('data', []))} flights")
-
-        # Get current user
-        user = client.get_current_user()
-        print(f"Current user: {user.get('data', {}).get('name', 'Unknown')}")
-
-        # Get live flights
-        live_flights = client.get_live_flights()
-        print(f"Live flights: {len(live_flights.get('data', []))}")
-
-    except PhpVmsApiException as e:
-        print(f"API Error: {e.message}")
-        if e.status_code:
-            print(f"Status Code: {e.status_code}")

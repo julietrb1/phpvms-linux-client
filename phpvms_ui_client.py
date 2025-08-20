@@ -18,13 +18,14 @@ Requirements:
 import sys
 import traceback
 from typing import Optional, List, Dict, Any
+import json
 from datetime import datetime
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
     QMessageBox, QStatusBar, QGroupBox, QFormLayout, QTextEdit,
-    QHeaderView, QProgressBar, QSplitter
+    QHeaderView, QProgressBar, QSplitter, QTabWidget, QComboBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
 from PySide6.QtGui import QFont, QIcon
@@ -46,6 +47,9 @@ class ApiWorker(QThread):
     # Signals
     login_result = Signal(bool, str, dict)  # success, message, user_data
     pireps_result = Signal(bool, str, list)  # success, message, pireps_data
+    airports_result = Signal(bool, str, list)  # success, message, airports_list
+    lookup_airport_result = Signal(bool, str, dict)  # success, message, airport_data
+    preload_result = Signal(bool, str, dict)  # success, message, {airlines:[], fleet:[]}
 
     def __init__(self):
         super().__init__()
@@ -53,6 +57,7 @@ class ApiWorker(QThread):
         self.operation = None
         self.base_url = None
         self.api_key = None
+        self.lookup_icao = None
 
     def set_login_operation(self, base_url: str, api_key: str):
         """Set up login operation"""
@@ -65,6 +70,22 @@ class ApiWorker(QThread):
         self.operation = "pireps"
         self.client = client
 
+    def set_airports_operation(self, client):
+        """Set up airports fetch operation"""
+        self.operation = "airports"
+        self.client = client
+
+    def set_lookup_airport_operation(self, client, icao: str):
+        """Set up airport lookup operation"""
+        self.operation = "lookup_airport"
+        self.client = client
+        self.lookup_icao = icao
+
+    def set_preload_operation(self, client):
+        """Set up preload (airlines and fleet) operation"""
+        self.operation = "preload"
+        self.client = client
+
     def run(self):
         """Execute the operation in the background thread"""
         try:
@@ -72,11 +93,23 @@ class ApiWorker(QThread):
                 self._do_login()
             elif self.operation == "pireps":
                 self._do_fetch_pireps()
+            elif self.operation == "airports":
+                self._do_fetch_airports()
+            elif self.operation == "lookup_airport":
+                self._do_lookup_airport()
+            elif self.operation == "preload":
+                self._do_preload()
         except Exception as e:
             if self.operation == "login":
                 self.login_result.emit(False, f"Unexpected error: {str(e)}", {})
             elif self.operation == "pireps":
                 self.pireps_result.emit(False, f"Unexpected error: {str(e)}", [])
+            elif self.operation == "airports":
+                self.airports_result.emit(False, f"Unexpected error: {str(e)}", [])
+            elif self.operation == "lookup_airport":
+                self.lookup_airport_result.emit(False, f"Unexpected error: {str(e)}", {})
+            elif self.operation == "preload":
+                self.preload_result.emit(False, f"Unexpected error: {str(e)}", {})
 
     def _do_login(self):
         """Perform login operation"""
@@ -109,6 +142,40 @@ class ApiWorker(QThread):
             self.pireps_result.emit(False, f"API Error: {e.message}", [])
         except Exception as e:
             self.pireps_result.emit(False, f"Error fetching PIREPs: {str(e)}", [])
+
+    def _do_fetch_airports(self):
+        try:
+            response = self.client.get_airports()
+            airports_data = response.get('data', [])
+            self.airports_result.emit(True, f"Found {len(airports_data)} airports", airports_data)
+        except PhpVmsApiException as e:
+            self.airports_result.emit(False, f"API Error: {e.message}", [])
+        except Exception as e:
+            self.airports_result.emit(False, f"Error fetching airports: {str(e)}", [])
+
+    def _do_lookup_airport(self):
+        try:
+            response = self.client.lookup_airport(self.lookup_icao)
+            airport_data = response.get('data', {}) if isinstance(response, dict) else response
+            self.lookup_airport_result.emit(True, f"Lookup complete for {self.lookup_icao}", airport_data or {})
+        except PhpVmsApiException as e:
+            self.lookup_airport_result.emit(False, f"API Error: {e.message}", {})
+        except Exception as e:
+            self.lookup_airport_result.emit(False, f"Error looking up airport: {str(e)}", {})
+
+    def _do_preload(self):
+        try:
+            airlines_resp = self.client.get_airlines()
+            fleet_resp = self.client.get_fleet()
+            result = {
+                'airlines': airlines_resp.get('data', []) if isinstance(airlines_resp, dict) else [],
+                'fleet': fleet_resp.get('data', []) if isinstance(fleet_resp, dict) else [],
+            }
+            self.preload_result.emit(True, "Preload complete", result)
+        except PhpVmsApiException as e:
+            self.preload_result.emit(False, f"API Error: {e.message}", {})
+        except Exception as e:
+            self.preload_result.emit(False, f"Error during preload: {str(e)}", {})
 
 
 class LoginWidget(QWidget):
@@ -190,6 +257,11 @@ class LoginWidget(QWidget):
         if not base_url.startswith(('http://', 'https://')):
             base_url = 'https://' + base_url
 
+        # Cache credentials (API key is sensitive; store unencrypted per requirements)
+        settings = QSettings()
+        settings.setValue("api/base_url", base_url)
+        settings.setValue("api/api_key", api_key)
+
         self.login_requested.emit(base_url, api_key)
 
     def set_login_enabled(self, enabled: bool):
@@ -250,6 +322,185 @@ class UserInfoWidget(QWidget):
         self.flight_time_label.setText(f"{hours}h {minutes}m")
 
         self.current_airport_label.setText(user_data.get('curr_airport_id', 'Unknown'))
+
+
+class AirportsWidget(QWidget):
+    """Widget to display Airports and perform lookup"""
+
+    refresh_requested = Signal()
+    lookup_requested = Signal(str)  # ICAO
+
+    def __init__(self):
+        super().__init__()
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        # Controls row
+        controls = QHBoxLayout()
+        controls.addWidget(QLabel("ICAO:"))
+        self.lookup_input = QLineEdit()
+        self.lookup_input.setPlaceholderText("e.g., KJFK")
+        self.lookup_input.setMaxLength(6)
+        # Make it about 20% shorter than its default suggested width
+        try:
+            w = self.lookup_input.sizeHint().width()
+            self.lookup_input.setFixedWidth(int(w * 0.8))
+        except Exception:
+            pass
+        controls.addWidget(self.lookup_input)
+
+        # Inline info label to display last lookup details
+        self.lookup_info_label = QLabel("")
+        self.lookup_info_label.setStyleSheet("color: #555;")
+        self.lookup_info_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        controls.addWidget(self.lookup_info_label)
+
+        self.lookup_btn = QPushButton("Lookup")
+        self.lookup_btn.clicked.connect(self._on_lookup_clicked)
+        controls.addWidget(self.lookup_btn)
+        controls.addStretch()
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.clicked.connect(self.refresh_requested.emit)
+        controls.addWidget(self.refresh_button)
+        layout.addLayout(controls)
+
+        # Table
+        self.table = QTableWidget()
+        self.table.setColumnCount(8)
+        self.table.setHorizontalHeaderLabels([
+            "ICAO", "IATA", "Name", "City", "Country", "Latitude", "Longitude", "Elevation"
+        ])
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSortingEnabled(True)
+        layout.addWidget(self.table)
+
+        self.setLayout(layout)
+
+    def _on_lookup_clicked(self):
+        icao = self.lookup_input.text().strip().upper()
+        if not icao:
+            QMessageBox.warning(self, "Lookup", "Please enter an ICAO code")
+            return
+        self.lookup_requested.emit(icao)
+
+    def set_lookup_info(self, airport: Optional[Dict[str, Any]]):
+        """Display brief info about the looked-up airport next to the input."""
+        if not airport:
+            self.lookup_info_label.setText("")
+            self.lookup_info_label.setToolTip("")
+            return
+        icao = airport.get('icao') or airport.get('id') or ''
+        name = airport.get('name') or ''
+        city = airport.get('city') or airport.get('location') or ''
+        country = airport.get('country') or airport.get('country_name') or ''
+        iata = airport.get('iata') or ''
+        brief = f"{icao} {f'({iata})' if iata else ''} - {name}".strip()
+        self.lookup_info_label.setText(brief)
+        # Tooltip with more details
+        lat = airport.get('lat') or airport.get('latitude') or airport.get('ground_lat') or ''
+        lon = airport.get('lon') or airport.get('longitude') or airport.get('ground_lon') or ''
+        elev = airport.get('elevation') or airport.get('altitude') or ''
+        tooltip = f"Name: {name}\nCity: {city}\nCountry: {country}\nLat: {lat}  Lon: {lon}\nElevation: {elev}"
+        self.lookup_info_label.setToolTip(tooltip)
+
+    def update_airports(self, airports: List[Dict[str, Any]]):
+        self.table.setRowCount(len(airports))
+        for row, ap in enumerate(airports):
+            def g(key, default=""):
+                return ap.get(key, default)
+            icao = g('icao') or g('id') or g('icao_code') or g('icao_id')
+            self.table.setItem(row, 0, QTableWidgetItem(str(icao or '')))
+            self.table.setItem(row, 1, QTableWidgetItem(str(g('iata') or '')))
+            self.table.setItem(row, 2, QTableWidgetItem(str(g('name') or '')))
+            self.table.setItem(row, 3, QTableWidgetItem(str(g('city') or g('location') or '')))
+            self.table.setItem(row, 4, QTableWidgetItem(str(g('country') or g('country_name') or '')))
+            # lat/lon/elevation can be in various keys
+            lat = ap.get('lat') or ap.get('latitude') or ap.get('ground_lat')
+            lon = ap.get('lon') or ap.get('longitude') or ap.get('ground_lon')
+            elev = ap.get('elevation') or ap.get('altitude')
+            self.table.setItem(row, 5, QTableWidgetItem(str(lat or '')))
+            self.table.setItem(row, 6, QTableWidgetItem(str(lon or '')))
+            self.table.setItem(row, 7, QTableWidgetItem(str(elev or '')))
+
+    def set_refresh_enabled(self, enabled: bool):
+        self.refresh_button.setEnabled(enabled)
+        self.lookup_btn.setEnabled(enabled)
+
+
+class CurrentFlightWidget(QWidget):
+    """Widget for entering current flight information"""
+
+    def __init__(self):
+        super().__init__()
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QVBoxLayout()
+
+        form = QFormLayout()
+
+        self.airline_combo = QComboBox()
+        form.addRow("Airline:", self.airline_combo)
+
+        self.flight_number_input = QLineEdit()
+        form.addRow("Flight Number:", self.flight_number_input)
+
+        self.leg_input = QLineEdit()
+        form.addRow("Leg:", self.leg_input)
+
+        self.code_input = QLineEdit()
+        form.addRow("Code:", self.code_input)
+
+        self.flight_type_combo = QComboBox()
+        # Populate with provided constants
+        flight_types = [
+            ("J", "Scheduled Pax"), ("F", "Scheduled Cargo"), ("C", "Charter Pax Only"),
+            ("A", "Additional Cargo"), ("E", "VIP"), ("G", "Additional Pax"),
+            ("H", "Charter Cargo/Mail"), ("I", "Ambulance"), ("K", "Training"),
+            ("M", "Mail Service"), ("O", "Charter Special"), ("P", "Positioning"),
+            ("T", "Technical Test"), ("W", "Military"), ("X", "Technical Stop"),
+            ("S", "Shuttle"), ("B", "Additional Shuttle"), ("Q", "Cargo In Cabin"),
+            ("R", "Addtl Cargo In Cabin"), ("L", "Charter Cargo In Cabin"),
+            ("D", "General Aviation"), ("N", "Air Taxi"), ("Y", "Company Specific"), ("Z", "Other")
+        ]
+        for code, label in flight_types:
+            self.flight_type_combo.addItem(f"{code} - {label}", userData=code)
+        form.addRow("Flight Type:", self.flight_type_combo)
+
+        self.aircraft_combo = QComboBox()
+        self.aircraft_combo.setMinimumWidth(200)
+        form.addRow("Aircraft:", self.aircraft_combo)
+
+        self.dep_input = QLineEdit()
+        form.addRow("Departure Airport:", self.dep_input)
+
+        self.arr_input = QLineEdit()
+        form.addRow("Arrival Airport:", self.arr_input)
+
+        self.route_text = QTextEdit()
+        self.route_text.setPlaceholderText("Enter route (free text)")
+        form.addRow("Flight Route:", self.route_text)
+
+        layout.addLayout(form)
+        layout.addStretch()
+        self.setLayout(layout)
+
+    def set_airlines(self, airlines: List[Dict[str, Any]]):
+        self.airline_combo.clear()
+        for a in airlines:
+            name = a.get('name') or a.get('icao') or str(a.get('id'))
+            self.airline_combo.addItem(str(name), userData=a)
+
+    def set_fleet(self, fleet: List[Dict[str, Any]]):
+        self.aircraft_combo.clear()
+        for ac in fleet:
+            name = ac.get('name') or ac.get('registration') or str(ac.get('id'))
+            self.aircraft_combo.addItem(str(name), userData=ac)
 
 
 class PirepsWidget(QWidget):
@@ -373,7 +624,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.client = None
         self.user_data = None
-        self.worker = ApiWorker()
+        # Active workers list to keep references until finished
+        self._workers: List[ApiWorker] = []
+        # Track in-flight operations for proper progress bar behavior
+        self._inflight_ops = 0
+        # Store last login credentials for client recreation
+        self._base_url: Optional[str] = None
+        self._api_key: Optional[str] = None
         self.setup_ui()
         self.setup_connections()
 
@@ -382,7 +639,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("phpVMS API Client")
         self.setMinimumSize(800, 600)
 
-        # Central widget with splitter
+        # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
@@ -393,8 +650,10 @@ class MainWindow(QMainWindow):
         self.login_widget = LoginWidget()
         self.user_info_widget = UserInfoWidget()
         self.pireps_widget = PirepsWidget()
+        self.airports_widget = AirportsWidget()
+        self.current_flight_widget = CurrentFlightWidget()
 
-        # Create splitter for main content
+        # Flights & info (existing) content inside a splitter
         self.splitter = QSplitter(Qt.Horizontal)
 
         # Left panel (user info)
@@ -410,8 +669,21 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.pireps_widget)
         self.splitter.setSizes([300, 500])
 
+        # Tab widget (created but added after login)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.current_flight_widget, "Current flight")
+        self.tabs.addTab(self.airports_widget, "Airports")
+        flights_info_container = QWidget()
+        fic_layout = QVBoxLayout()
+        fic_layout.setContentsMargins(0, 0, 0, 0)
+        fic_layout.addWidget(self.splitter)
+        flights_info_container.setLayout(fic_layout)
+        self.tabs.addTab(flights_info_container, "Flights")
+        self.tabs.setVisible(False)
+
         # Initially show login widget
         layout.addWidget(self.login_widget)
+        layout.addWidget(self.tabs)
 
         # Progress bar
         self.progress_bar = QProgressBar()
@@ -427,6 +699,11 @@ class MainWindow(QMainWindow):
         self.logout_button = QPushButton("Logout")
         self.logout_button.setVisible(False)
         self.logout_button.clicked.connect(self.logout)
+        
+        # Internal caches
+        self._airport_icaos_cache = set()
+        self._airports_list = []
+        self._airport_lookup_cache: Dict[str, Dict[str, Any]] = {}
 
     def setup_connections(self):
         """Set up signal connections"""
@@ -436,9 +713,39 @@ class MainWindow(QMainWindow):
         # PIREPs widget
         self.pireps_widget.refresh_requested.connect(self.refresh_pireps)
 
-        # Worker signals
-        self.worker.login_result.connect(self.on_login_result)
-        self.worker.pireps_result.connect(self.on_pireps_result)
+        # Airports widget
+        self.airports_widget.refresh_requested.connect(self.refresh_airports)
+        self.airports_widget.lookup_requested.connect(self.lookup_airport)
+
+        # Worker signals are connected per-operation when spawning workers
+
+    def _create_worker(self) -> ApiWorker:
+        """Create a new worker for an operation and wire signals."""
+        worker = ApiWorker()
+        # Connect signals
+        worker.login_result.connect(self.on_login_result)
+        worker.pireps_result.connect(self.on_pireps_result)
+        worker.airports_result.connect(self.on_airports_result)
+        worker.lookup_airport_result.connect(self.on_lookup_airport_result)
+        worker.preload_result.connect(self.on_preload_result)
+        # Track and clean up
+        worker.finished.connect(self._on_worker_finished)
+        self._workers.append(worker)
+        return worker
+
+    def _on_worker_finished(self):
+        # Remove finished worker from list
+        sender = self.sender()
+        try:
+            self._workers.remove(sender)  # type: ignore
+        except ValueError:
+            pass
+        # Decrement in-flight ops and hide progress if none left
+        if self._inflight_ops > 0:
+            self._inflight_ops -= 1
+        if self._inflight_ops <= 0:
+            self._inflight_ops = 0
+            self.progress_bar.setVisible(False)
 
     def on_login_requested(self, base_url: str, api_key: str):
         """Handle login request"""
@@ -446,9 +753,13 @@ class MainWindow(QMainWindow):
         self.show_progress(True)
         self.login_widget.set_login_enabled(False)
 
-        # Start login in worker thread
-        self.worker.set_login_operation(base_url, api_key)
-        self.worker.start()
+        # Store for later client creation
+        self._base_url = base_url
+        self._api_key = api_key
+        # Start login in a new worker thread
+        worker = self._create_worker()
+        worker.set_login_operation(base_url, api_key)
+        worker.start()
 
     def on_login_result(self, success: bool, message: str, user_data: Dict[str, Any]):
         """Handle login result"""
@@ -457,14 +768,36 @@ class MainWindow(QMainWindow):
 
         if success:
             # Store client and user data
-            self.client = create_client(self.worker.base_url, api_key=self.worker.api_key)
+            if self._base_url and self._api_key:
+                self.client = create_client(self._base_url, api_key=self._api_key)
+            else:
+                # Fallback: try to reconstruct from user settings (shouldn't happen normally)
+                settings = QSettings()
+                base_url = str(settings.value("api/base_url", ""))
+                api_key = str(settings.value("api/api_key", ""))
+                if base_url and api_key:
+                    if not base_url.startswith(("http://", "https://")):
+                        base_url = "https://" + base_url
+                    self.client = create_client(base_url, api_key=api_key)
             self.user_data = user_data
+
+            # Save user_data to cache to avoid future login network calls
+            try:
+                settings = QSettings()
+                settings.setValue("api/user_data", json.dumps(user_data))
+                settings.setValue("api/user_cached_at", datetime.utcnow().isoformat() + "Z")
+            except Exception:
+                pass
 
             # Update UI
             self.user_info_widget.update_user_info(user_data)
             self.show_main_interface()
             self.status_bar.showMessage(f"Logged in as {user_data.get('name', 'Unknown')}")
 
+            # Preload data for tabs
+            self.preload_reference_data()
+            # Load airports list
+            self.refresh_airports()
             # Automatically fetch PIREPs
             self.refresh_pireps()
         else:
@@ -476,8 +809,8 @@ class MainWindow(QMainWindow):
         # Hide login widget
         self.login_widget.setVisible(False)
 
-        # Show main content
-        self.centralWidget().layout().addWidget(self.splitter)
+        # Show main content (tabs)
+        self.tabs.setVisible(True)
 
         # Add logout button to status bar
         self.logout_button.setVisible(True)
@@ -492,9 +825,100 @@ class MainWindow(QMainWindow):
         self.show_progress(True)
         self.pireps_widget.set_refresh_enabled(False)
 
-        # Start PIREPs fetch in worker thread
-        self.worker.set_pireps_operation(self.client)
-        self.worker.start()
+        # Start PIREPs fetch in its own worker thread
+        worker = self._create_worker()
+        worker.set_pireps_operation(self.client)
+        worker.start()
+
+    def refresh_airports(self):
+        if not self.client:
+            return
+        self.status_bar.showMessage("Loading airports...")
+        self.show_progress(True)
+        self.airports_widget.set_refresh_enabled(False)
+        worker = self._create_worker()
+        worker.set_airports_operation(self.client)
+        worker.start()
+
+    def lookup_airport(self, icao: str):
+        if not self.client:
+            return
+        # Remember whether we already had it
+        already_cached = icao.upper() in self._airport_icaos_cache
+        self._pending_lookup_was_new = not already_cached
+        self._pending_lookup_icao = icao.upper()
+
+        self.status_bar.showMessage(f"Looking up {icao}...")
+        self.show_progress(True)
+        self.airports_widget.set_refresh_enabled(False)
+        worker = self._create_worker()
+        worker.set_lookup_airport_operation(self.client, icao.upper())
+        worker.start()
+
+    def on_airports_result(self, success: bool, message: str, airports_data: List[Dict[str, Any]]):
+        self.show_progress(False)
+        self.airports_widget.set_refresh_enabled(True)
+        if success:
+            self._airports_list = airports_data
+            # Update cache set
+            self._airport_icaos_cache = set()
+            for ap in airports_data:
+                icao = ap.get('icao') or ap.get('id') or ap.get('icao_code') or ap.get('icao_id')
+                if isinstance(icao, str):
+                    self._airport_icaos_cache.add(icao.upper())
+            self.airports_widget.update_airports(airports_data)
+            self.status_bar.showMessage(message)
+        else:
+            QMessageBox.warning(self, "Error", f"Failed to load airports: {message}")
+            self.status_bar.showMessage("Failed to load airports")
+
+    def on_lookup_airport_result(self, success: bool, message: str, airport_data: Dict[str, Any]):
+        self.show_progress(False)
+        # Re-enable buttons
+        self.airports_widget.set_refresh_enabled(True)
+        if success:
+            self.status_bar.showMessage(message)
+            # Keep the looked-up airport only in memory and display it next to the input
+            if not hasattr(self, '_airport_lookup_cache'):
+                self._airport_lookup_cache: Dict[str, Dict[str, Any]] = {}
+            icao = (self._pending_lookup_icao if hasattr(self, '_pending_lookup_icao') else '') or airport_data.get('icao') or airport_data.get('id') or ''
+            if isinstance(icao, str):
+                self._airport_lookup_cache[icao.upper()] = airport_data or {}
+            self.airports_widget.set_lookup_info(airport_data or {})
+        else:
+            self.airports_widget.set_lookup_info(None)
+            QMessageBox.warning(self, "Lookup Failed", message)
+            self.status_bar.showMessage("Lookup failed")
+
+    def preload_reference_data(self):
+        if not self.client:
+            return
+        self.status_bar.showMessage("Loading reference data...")
+        self.show_progress(True)
+        worker = self._create_worker()
+        worker.set_preload_operation(self.client)
+        worker.start()
+
+    def on_preload_result(self, success: bool, message: str, data: Dict[str, Any]):
+        self.show_progress(False)
+        if success:
+            airlines = data.get('airlines', [])
+            fleet = data.get('fleet', [])
+            self.current_flight_widget.set_airlines(airlines)
+            # Populate aircraft list from the first fleet only (user selects aircraft)
+            aircraft_list: List[Dict[str, Any]] = []
+            if isinstance(fleet, list) and len(fleet) > 0:
+                first_fleet = fleet[0]
+                # Some APIs may return 'aircraft' or 'aircrafts'
+                if isinstance(first_fleet, dict):
+                    aircraft_list = first_fleet.get('aircraft') or first_fleet.get('aircrafts') or []
+                    if not isinstance(aircraft_list, list):
+                        aircraft_list = []
+            self.current_flight_widget.set_fleet(aircraft_list)
+            self.status_bar.showMessage(message)
+        else:
+            QMessageBox.warning(self, "Error", f"Failed to preload data: {message}")
+            self.status_bar.showMessage("Failed to preload data")
 
     def on_pireps_result(self, success: bool, message: str, pireps_data: List[Pirep]):
         """Handle PIREPs result"""
@@ -515,7 +939,7 @@ class MainWindow(QMainWindow):
         self.user_data = None
 
         # Hide main interface
-        self.splitter.setVisible(False)
+        self.tabs.setVisible(False)
         self.logout_button.setVisible(False)
 
         # Show login widget
@@ -525,12 +949,54 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Ready - Please login to continue")
 
     def show_progress(self, show: bool):
-        """Show/hide progress bar"""
+        """Refcounted progress indicator across concurrent operations."""
         if show:
+            self._inflight_ops += 1
             self.progress_bar.setVisible(True)
             self.progress_bar.setRange(0, 0)  # Indeterminate progress
         else:
-            self.progress_bar.setVisible(False)
+            if self._inflight_ops > 0:
+                self._inflight_ops -= 1
+            if self._inflight_ops <= 0:
+                self._inflight_ops = 0
+                self.progress_bar.setVisible(False)
+
+    def try_auto_login(self, base_url: str, api_key: str):
+        """Attempt to skip a network login by using cached user data.
+        If cached user data is available, set up the client and UI directly.
+        Otherwise, fallback to the normal login flow (which makes a network call).
+        """
+        # Normalize base_url
+        if not base_url.startswith(("http://", "https://")):
+            base_url = "https://" + base_url
+        self._base_url = base_url
+        self._api_key = api_key
+
+        # Load cached user_data
+        settings = QSettings()
+        cached_user_json = settings.value("api/user_data", "")
+        user_data = None
+        if isinstance(cached_user_json, str) and cached_user_json.strip():
+            try:
+                user_data = json.loads(cached_user_json)
+            except Exception:
+                user_data = None
+
+        if user_data:
+            # Use cached user data; avoid calling get_current_user
+            self.client = create_client(base_url, api_key=api_key)
+            self.user_data = user_data
+            self.user_info_widget.update_user_info(user_data)
+            self.show_main_interface()
+            self.status_bar.showMessage(f"Logged in (cached) as {user_data.get('name', 'Unknown')}")
+
+            # Proceed to load other data
+            self.preload_reference_data()
+            self.refresh_airports()
+            self.refresh_pireps()
+        else:
+            # No cached user; fallback to network login
+            self.on_login_requested(base_url, api_key)
 
 
 def main():
@@ -545,6 +1011,16 @@ def main():
     # Create and show main window
     window = MainWindow()
     window.show()
+
+    # Attempt auto-login if cached credentials exist
+    settings = QSettings()
+    cached_base_url = settings.value("api/base_url", "")
+    cached_api_key = settings.value("api/api_key", "")
+    if cached_base_url and cached_api_key:
+        base_url = str(cached_base_url)
+        api_key = str(cached_api_key)
+        # Try to use cached user data to avoid a login network call
+        window.try_auto_login(base_url, api_key)
 
     # Run application
     sys.exit(app.exec())
