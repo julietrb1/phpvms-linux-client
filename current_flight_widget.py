@@ -88,11 +88,15 @@ class CurrentFlightWidget(QWidget):
         self.route_text.setPlaceholderText("Enter route (free text)")
         form.addRow("Flight Route:", self.route_text)
 
-        # Integer fields
         self.level_input = QLineEdit()
         self.level_input.setPlaceholderText("ft")
         self.level_input.setValidator(QIntValidator(0, 9999, self))
         form.addRow("Level:", self.level_input)
+
+        self.block_fuel_input = QLineEdit()
+        self.block_fuel_input.setPlaceholderText("kg")
+        self.block_fuel_input.setValidator(QIntValidator(0, 100000, self))
+        form.addRow("Block fuel (kg):", self.block_fuel_input)
 
         self.planned_distance_input = QLineEdit()
         self.planned_distance_input.setPlaceholderText("nm")
@@ -106,7 +110,6 @@ class CurrentFlightWidget(QWidget):
 
         layout.addLayout(form)
 
-        # Action buttons row
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_row.addWidget(self.prefile_button)

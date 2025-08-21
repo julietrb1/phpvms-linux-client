@@ -743,6 +743,7 @@ class MainWindow(QMainWindow):
             alt = ((data or {}).get("alternate") or {})
             general = ((data or {}).get("general") or {})
             times = ((data or {}).get("times") or {})
+            fuel = ((data or {}).get("fuel") or {})
 
             dep_icao = origin.get("icao_code") or origin.get("icao") or origin.get("iata_code") or ""
             arr_icao = dest.get("icao_code") or dest.get("icao") or dest.get("iata_code") or ""
@@ -773,6 +774,10 @@ class MainWindow(QMainWindow):
             minutes = self._parse_simbrief_ete_to_minutes(ete_val)
             if minutes is not None:
                 self.current_flight_widget.planned_time_input.setText(str(int(minutes)))
+
+            block_fuel = fuel.get("plan_ramp")
+            if block_fuel:
+                self.current_flight_widget.block_fuel_input.setText(str(int(block_fuel)))
 
             self.status_bar.showMessage("SimBrief OFP imported")
         finally:
