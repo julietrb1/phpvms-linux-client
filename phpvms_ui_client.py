@@ -16,7 +16,6 @@ Requirements:
 """
 
 import json
-import logging
 import sys
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -219,6 +218,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._workflow = None
         self._last_fuel_used = None
         self._last_distance = None
         self._last_flight_time = None
@@ -925,7 +925,11 @@ class MainWindow(QMainWindow):
 
     def on_file_clicked(self):
         if not self._workflow:
-            logging.error("Workflow not initialized")
+            try:
+                self._workflow = PirepWorkflowManager(self.client)
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Workflow init failed: {e}")
+                return
         if not self._active_pirep_id:
             QMessageBox.information(self, "No active PIREP", "There is no active PIREP to file.")
             return
