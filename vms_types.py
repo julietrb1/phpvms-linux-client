@@ -1,4 +1,4 @@
-from typing import TypedDict, Optional, List, Union, Any, Dict
+from typing import TypedDict, Optional, List, Any, Dict
 
 # Core resource types to consume phpVMS API responses
 
