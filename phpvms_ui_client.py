@@ -325,6 +325,10 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready - Please login to continue")
 
+        # Active PIREP summary label (shows route or '(no active)')
+        self.active_pirep_label = QLabel("(no active)")
+        self.active_pirep_label.setVisible(False)
+
         # Bridge summary label (right side, before Logout)
         self.bridge_summary_label = QLabel("")
         self.bridge_summary_label.setVisible(False)
@@ -515,12 +519,20 @@ class MainWindow(QMainWindow):
         # Show main content (tabs)
         self.tabs.setVisible(True)
 
-        # Add bridge summary and logout button to status bar (summary left of logout)
+        # Add active PIREP summary, bridge summary, and logout button to status bar
+        if self.active_pirep_label not in self.status_bar.children():
+            self.status_bar.addPermanentWidget(self.active_pirep_label, 1)
         if self.bridge_summary_label not in self.status_bar.children():
             self.status_bar.addPermanentWidget(self.bridge_summary_label, 1)
+        self.active_pirep_label.setVisible(True)
         self.bridge_summary_label.setVisible(True)
         self.logout_button.setVisible(True)
         self.status_bar.addPermanentWidget(self.logout_button)
+        # Initialize as no active on entry
+        try:
+            self.active_pirep_label.setText("(no active)")
+        except Exception:
+            pass
 
         # Wire bridge tab controls
         self.bridge_status_widget.start_requested.connect(self._on_bridge_start)
@@ -654,6 +666,25 @@ class MainWindow(QMainWindow):
 
         if success:
             self.pireps_widget.update_pireps(pireps_data)
+            # Update active route label based on current active ID
+            try:
+                text_set = False
+                if self._active_pirep_id:
+                    for pr in pireps_data:
+                        try:
+                            if str(pr.get('id')) == str(self._active_pirep_id):
+                                dep = str(pr.get('dpt_airport_id') or "").upper()
+                                arv = str(pr.get('arr_airport_id') or "").upper()
+                                if dep and arv:
+                                    self.active_pirep_label.setText(f"{dep} → {arv}")
+                                    text_set = True
+                                break
+                        except Exception:
+                            pass
+                if not text_set:
+                    self.active_pirep_label.setText("(no active)")
+            except Exception:
+                pass
             # Update pagination controls based on meta
             current = int(meta.get('current_page') or meta.get('current') or 1)
             last = int(meta.get('last_page') or meta.get('last') or (current if len(pireps_data) < self._pireps_limit else current + 1))
@@ -809,8 +840,26 @@ class MainWindow(QMainWindow):
             pass
         self.show_progress(False)
         try:
-            pid = str(pirep.get('id'))
+            # phpVMS API responses generally include the resource under a 'data' key
+            pirep_data = pirep.get('data') if isinstance(pirep, dict) and 'data' in pirep else pirep
+            pid_val = (pirep_data or {}).get('id')
+            pid = str(pid_val) if pid_val is not None else None
+            if not pid:
+                raise ValueError("No PIREP id in response")
             self._active_pirep_id = pid
+            # Update active route label using known inputs
+            try:
+                dpt_txt = dpt if isinstance(dpt, str) else ""
+                arr_txt = arr if isinstance(arr, str) else ""
+                if dpt_txt and arr_txt:
+                    self.active_pirep_label.setText(f"{dpt_txt} → {arr_txt}")
+                else:
+                    # Fallback to data returned from server
+                    dep = str((pirep_data or {}).get('dpt_airport_id') or "").upper()
+                    arv = str((pirep_data or {}).get('arr_airport_id') or "").upper()
+                    self.active_pirep_label.setText(f"{dep} → {arv}" if dep and arv else "(no active)")
+            except Exception:
+                self.active_pirep_label.setText("(no active)")
             # also reflect in user_data for persistence, if desired
             try:
                 if isinstance(self.user_data, dict):
@@ -839,6 +888,10 @@ class MainWindow(QMainWindow):
         finally:
             self.show_progress(False)
         self._active_pirep_id = None
+        try:
+            self.active_pirep_label.setText("(no active)")
+        except Exception:
+            pass
         self.status_bar.showMessage(f"Cancelled PIREP #{pid}")
 
     def on_file_clicked(self):
@@ -884,6 +937,10 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"Filed PIREP #{pid} (PENDING)")
         # After filing, consider no longer active
         self._active_pirep_id = None
+        try:
+            self.active_pirep_label.setText("(no active)")
+        except Exception:
+            pass
 
     def on_cancel_selected_clicked(self, pid: str):
         """Cancel the selected PIREP from the Flights tab, respecting state rules."""
@@ -932,6 +989,15 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self._active_pirep_id = pid
+        # Update status bar active label with route text if available
+        try:
+            route_text = self.pireps_widget.get_selected_route()
+            if route_text and route_text != "N/A":
+                self.active_pirep_label.setText(route_text)
+            else:
+                self.active_pirep_label.setText("(no active)")
+        except Exception:
+            self.active_pirep_label.setText("(no active)")
         self.status_bar.showMessage(f"Active PIREP set to #{pid}")
 
     def _on_pireps_selection_changed(self):
@@ -964,6 +1030,10 @@ class MainWindow(QMainWindow):
         self.user_data = None
         self._workflow = None
         self._active_pirep_id = None
+        try:
+            self.active_pirep_label.setText("(no active)")
+        except Exception:
+            pass
 
         # Hide main interface
         self.tabs.setVisible(False)
@@ -975,6 +1045,11 @@ class MainWindow(QMainWindow):
 
         # Clear status
         self.status_bar.showMessage("Ready - Please login to continue")
+        try:
+            self.active_pirep_label.setVisible(False)
+            self.active_pirep_label.setText("(no active)")
+        except Exception:
+            pass
 
     def _on_bridge_start(self):
         # If user entered a port, restart on that port

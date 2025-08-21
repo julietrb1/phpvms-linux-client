@@ -25,7 +25,7 @@ import socket
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSettings
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QDoubleSpinBox,
     QSpinBox, QPushButton, QGroupBox
@@ -67,7 +67,6 @@ class SimulateTrackingWidget(QWidget):
         group = QGroupBox("Simulate tracking")
         layout = QVBoxLayout()
 
-        # Row 1: Status + Speed + Altitude
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("Status:"))
         self.status_combo = QComboBox()
@@ -90,7 +89,6 @@ class SimulateTrackingWidget(QWidget):
         row1.addStretch()
         layout.addLayout(row1)
 
-        # Row 2: Base lat/lon
         row2 = QHBoxLayout()
         row2.addWidget(QLabel("Base Lat:"))
         self.base_lat = QDoubleSpinBox()
@@ -112,9 +110,7 @@ class SimulateTrackingWidget(QWidget):
         row2.addStretch()
         layout.addLayout(row2)
 
-        # Row 3: Minute offsets N/S and E/W
         row3 = QHBoxLayout()
-        # Latitude minutes and N/S
         row3.addWidget(QLabel("Lat offset:"))
         self.lat_minutes = QSpinBox()
         self.lat_minutes.setRange(0, 10000)
@@ -124,7 +120,6 @@ class SimulateTrackingWidget(QWidget):
         self.lat_dir.addItems(["N", "S"])  # N positive, S negative
         row3.addWidget(self.lat_dir)
         row3.addSpacing(16)
-        # Longitude minutes and E/W
         row3.addWidget(QLabel("Lon offset:"))
         self.lon_minutes = QSpinBox()
         self.lon_minutes.setRange(0, 10000)
@@ -135,6 +130,12 @@ class SimulateTrackingWidget(QWidget):
         row3.addWidget(self.lon_dir)
         row3.addStretch()
         layout.addLayout(row3)
+
+        last_sent_lat = QSettings().value("bridge_status_widget/last_sent_lat")
+        last_sent_lon = QSettings().value("bridge_status_widget/last_sent_lon")
+        if last_sent_lat is not None and last_sent_lon is not None:
+            self.base_lat.setValue(float(last_sent_lat))
+            self.base_lon.setValue(float(last_sent_lon))
 
         # Row 4: Send
         row4 = QHBoxLayout()
@@ -233,5 +234,7 @@ class SimulateTrackingWidget(QWidget):
             self.info_label.setText(f"Sent {status} to {host}:{port} lat={payload['position']['lat']} lon={payload['position']['lon']}")
             self.base_lat.setValue(new_lat)
             self.base_lon.setValue(new_lon)
+            QSettings().setValue("bridge_status_widget/last_sent_lat", new_lat)
+            QSettings().setValue("bridge_status_widget/last_sent_lon", new_lon)
         except Exception as e:
             self.info_label.setText(f"Error: {e}")

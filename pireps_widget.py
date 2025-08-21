@@ -237,3 +237,17 @@ class PirepsWidget(QWidget):
             return self._row_states[row]
         except Exception:
             return None
+
+    def get_selected_route(self) -> Optional[str]:
+        """Return the 'Route' cell text (e.g., "DEP → ARR") for the selected row, if any."""
+        try:
+            row = self.table.currentRow()
+            if row is None or row < 0:
+                return None
+            item = self.table.item(row, 0)
+            if item is None:
+                return None
+            text = item.text().strip()
+            return text if text else None
+        except Exception:
+            return None
