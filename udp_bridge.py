@@ -144,6 +144,7 @@ class UdpBridge:
                 self._append_log(self._last_error)
             return
 
+        payload["position"]["flight_time"] = int(payload["position"]["flight_time"])
         payload["position"]["sim_time"] = datetime.fromtimestamp(float(payload["position"]["sim_time"])).strftime("%Y-%m-%dT%H:%M:%SZ")
         status = payload.get("status")
         if isinstance(status, str) and status:
