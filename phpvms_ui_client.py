@@ -16,6 +16,7 @@ Requirements:
 """
 
 import json
+import logging
 import sys
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -923,8 +924,8 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"Cancelled PIREP #{pid}")
 
     def on_file_clicked(self):
-        if not self.client or not self._workflow:
-            return
+        if not self._workflow:
+            logging.error("Workflow not initialized")
         if not self._active_pirep_id:
             QMessageBox.information(self, "No active PIREP", "There is no active PIREP to file.")
             return
@@ -936,7 +937,7 @@ class MainWindow(QMainWindow):
         }
         self.show_progress(True)
         try:
-            self._workflow.complete_flight(pid, final_data)
+            self._workflow.client.file_pirep(pid, final_data)
         except Exception as e:
             self.show_progress(False)
             QMessageBox.warning(self, "File failed", str(e))

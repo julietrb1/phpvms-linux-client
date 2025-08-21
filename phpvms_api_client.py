@@ -702,9 +702,6 @@ class PirepWorkflowManager:
             raise PhpVmsApiException("PIREP cannot be updated in current state", response=pirep)
         return self.client.update_pirep(pirep_id, update_data)
 
-    def complete_flight(self, pirep_id: int, final_data: Dict[str, Any]) -> Dict[str, Any]:
-        return self.client.file_pirep(pirep_id, final_data)
-
     def cancel_flight(self, pirep_id: str) -> Dict[str, Any]:
         pirep = self.client.get_pirep(pirep_id)['data']
         state = pirep.get('state')
