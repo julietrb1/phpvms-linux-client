@@ -126,7 +126,7 @@ class Pirep:
     fuel_used: Optional[float] = None
     landing_rate: Optional[float] = None
     score: Optional[int] = None
-    source: int = PirepSource.MANUAL.value
+    source: int = PirepSource.ACARS.value
     state: int = PirepState.DRAFT.value
     status: int = 0
     route: Optional[str] = None

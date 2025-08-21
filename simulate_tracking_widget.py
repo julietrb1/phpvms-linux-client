@@ -137,7 +137,6 @@ class SimulateTrackingWidget(QWidget):
             self.base_lat.setValue(float(last_sent_lat))
             self.base_lon.setValue(float(last_sent_lon))
 
-        # Row 4: Send
         row4 = QHBoxLayout()
         self.send_btn = QPushButton("Send")
         self.send_btn.clicked.connect(self._on_send)
