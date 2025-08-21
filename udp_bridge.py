@@ -4,11 +4,6 @@ import threading
 import time
 from typing import Dict, Any, Optional, List
 
-try:
-    from phpvms_api_client import FlightProgressTracker
-except Exception:  # pragma: no cover - allow import in editors without module path
-    FlightProgressTracker = object  # type: ignore
-
 
 class UdpBridge:
     """
@@ -18,8 +13,8 @@ class UdpBridge:
     - Expects JSON payloads with keys:
         {
           "status": "ENR",              # optional
-          "distance": 217.4,             # optional
-          "fuel_used": 452.0,            # optional
+          "dist": 217.4,                 # optional (nm remaining)
+          "fuel": 452.0,                 # optional (kg remaining)
           "position": {                   # optional
             "lat": 40.1, "lon": -73.9,
             "altitude": 12000, "heading": 255, "gs": 320, "sim_time": 1724167500
@@ -50,6 +45,8 @@ class UdpBridge:
         self._last_error: Optional[str] = None
         self._last_status: Optional[str] = None
         self._last_position: Optional[Dict[str, Any]] = None
+        self._last_dist: Optional[float] = None
+        self._last_fuel: Optional[float] = None
         self._log: List[str] = []  # rolling log strings
         self._max_log_lines: int = 500
 
@@ -92,6 +89,8 @@ class UdpBridge:
                 "last_error": self._last_error,
                 "last_status": self._last_status,
                 "last_position": dict(self._last_position) if isinstance(self._last_position, dict) else None,
+                "last_dist": self._last_dist,
+                "last_fuel": self._last_fuel,
                 "log": list(self._log),
             }
 
@@ -149,11 +148,22 @@ class UdpBridge:
         pos = payload.get("position") or {}
         if isinstance(pos, dict):
             with self._lock:
-                self._last_position = {k: pos.get(k) for k in ("lat", "lon", "altitude", "heading", "gs", "sim_time")}
+                self._last_position = {k: pos.get(k) for k in ("lat", "lon", "altitude_msl", "altitude_agl", "heading", "gs", "sim_time", "distance")}
+        # Track latest dist/fuel if provided
+        try:
+            dist_val = pos.get("distance")
+            fuel_val = payload.get("fuel")
+            with self._lock:
+                if isinstance(dist_val, (int, float)):
+                    self._last_dist = float(dist_val)
+                if isinstance(fuel_val, (int, float)):
+                    self._last_fuel = float(fuel_val)
+        except Exception:
+            pass
 
         try:
             if isinstance(status, str) and status and callable(self._status_handler):
-                self._status_handler(status, payload.get("dist"), payload.get("fuel"))
+                self._status_handler(status, pos.get("distance"), payload.get("fuel"))
         except Exception as e:
             with self._lock:
                 self._packets_err += 1
@@ -161,11 +171,7 @@ class UdpBridge:
                 self._append_log(self._last_error)
         try:
             if isinstance(pos, dict) and callable(self._position_handler):
-                alt_val = pos.get("altitude") if pos.get("altitude") is not None else pos.get("altitude_msl")
-                pos_norm = dict(pos)
-                if alt_val is not None:
-                    pos_norm["altitude"] = alt_val
-                self._position_handler(pos_norm)
+                self._position_handler(pos)
         except Exception as e:
             with self._lock:
                 self._packets_err += 1
@@ -188,7 +194,7 @@ class UdpBridge:
             s = status or "-"
             p = self._last_position or {}
             self._append_log(
-                f"OK: st={s} lat={p.get('lat')} lon={p.get('lon')} alt={p.get('altitude')} gs={p.get('gs')}"
+                f"OK: st={s} lat={p.get('lat')} lon={p.get('lon')} alt_msl={p.get('altitude_msl')} alt_agl={p.get('altitude_agl')} gs={p.get('gs')} dist={self._last_dist}nm fuel={self._last_fuel}kg"
             )
 
 

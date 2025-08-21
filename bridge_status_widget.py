@@ -105,7 +105,21 @@ class BridgeStatusWidget(QWidget):
         self.running_label.setText(f"Bridge: {'running' if running else 'stopped'}")
         self.addr_label.setText(f"Addr: {host}:{port}")
         self.pkts_label.setText(f"Packets: {ok} ok / {err} err")
-        self.last_label.setText(f"Last: {last_time} | {snap.get('last_status') or '-'}")
+        dist = snap.get("last_dist")
+        fuel = snap.get("last_fuel")
+        extra = []
+        if dist is not None:
+            try:
+                extra.append(f"dist={float(dist):.1f}nm")
+            except Exception:
+                extra.append(f"dist={dist}")
+        if fuel is not None:
+            try:
+                extra.append(f"fuel={float(fuel):.1f}kg")
+            except Exception:
+                extra.append(f"fuel={fuel}")
+        extra_txt = (" | " + " ".join(extra)) if extra else ""
+        self.last_label.setText(f"Last: {last_time} | {snap.get('last_status') or '-'}{extra_txt}")
 
         logs = snap.get("log") or []
         if isinstance(logs, list):

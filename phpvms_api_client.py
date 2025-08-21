@@ -12,7 +12,7 @@ import json
 import logging
 from dataclasses import asdict
 from enum import Enum
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Any
 
 import requests
 
@@ -680,47 +680,6 @@ class PirepStateMachine:
         elif pirep_state == PirepState.PENDING.value:
             return ['wait_for_approval']
         return []
-
-
-class FlightProgressTracker:
-    """Helper to push ACARS and status updates for a PIREP"""
-
-    def __init__(self, client: 'PhpVmsApiClient', pirep_id: Union[str, int]):
-        self.client = client
-        self.pirep_id = pirep_id
-        self.current_phase: str = PirepStatus.INITIATED.value
-
-    def update_phase(self, new_phase: Union[PirepStatus, str], distance: Optional[float] = None, fuel_used: Optional[float] = None) -> Dict[str, Any]:
-        phase_code = new_phase.value if isinstance(new_phase, PirepStatus) else str(new_phase)
-        self.current_phase = phase_code
-        payload: Dict[str, Any] = {"status": phase_code}
-        if distance is not None:
-            payload["distance"] = distance
-        if fuel_used is not None:
-            payload["fuel_used"] = fuel_used
-        return self.client.update_pirep(self.pirep_id, payload)
-
-    def send_position(self, lat: float, lon: float, altitude: Optional[float] = None, heading: Optional[float] = None, gs: Optional[float] = None, sim_time: Optional[int] = None) -> Dict[str, Any]:
-        pos = {
-            "lat": lat,
-            "lon": lon,
-            "altitude": altitude,
-            "heading": heading,
-            "gs": gs,
-            "sim_time": sim_time,
-        }
-        pos = {k: v for k, v in pos.items() if v is not None}
-        return self.client.post_acars_position(self.pirep_id, positions=[pos])
-
-    def log_event(self, log: str, sim_time: Optional[int] = None) -> Dict[str, Any]:
-        entry = {"log": log}
-        if sim_time is not None:
-            entry["sim_time"] = sim_time
-        return self.client.post_acars_logs(self.pirep_id, logs=[entry])
-
-    def post_events(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
-        return self.client.post_acars_events(self.pirep_id, events=events)
-
 
 class PirepWorkflowManager:
     """High-level PIREP workflow orchestration using PhpVmsApiClient"""

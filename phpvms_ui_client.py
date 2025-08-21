@@ -36,6 +36,8 @@ from udp_bridge import UdpBridge
 from user_info_widget import UserInfoWidget
 from vms_types import Pirep
 
+NO_ACTIVE_TEXT = "(no active)"
+
 try:
     from phpvms_api_client import create_client, PhpVmsApiException, PirepState, PirepWorkflowManager
 except ImportError as e:
@@ -177,7 +179,7 @@ class MainWindow(QMainWindow):
             # If numeric, assume minutes if reasonable; if big, assume seconds
             if isinstance(value, (int, float)):
                 v = int(value)
-                if v > 0 and v < 60*24*24:
+                if 0 < v < 60*24*24:
                     return v
                 # If too big, guess it's seconds
                 return int(round(v / 60))
@@ -218,6 +220,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self._initial_block_fuel_kg = None
         self.tabs = None
         self.bridge_status_widget = None
         self._active_pirep_id = None
@@ -236,9 +239,8 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         """Set up the main UI"""
         self.setWindowTitle("phpVMS API Client")
-        self.setMinimumSize(800, 750)
+        self.setMinimumSize(800, 800)
 
-        # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
@@ -264,7 +266,7 @@ class MainWindow(QMainWindow):
         actions_row = QHBoxLayout()
         self.pireps_refresh_btn = QPushButton("Refresh")
         self.pireps_set_active_btn = QPushButton("Set Active")
-        self.pireps_cancel_btn = QPushButton("Cancel Selected")
+        self.pireps_cancel_btn = QPushButton("Cancel")
         self.pireps_set_active_btn.setEnabled(False)
         self.pireps_cancel_btn.setEnabled(False)
         actions_row.addWidget(self.pireps_refresh_btn)
@@ -326,7 +328,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Ready - Please login to continue")
 
         # Active PIREP summary label (shows route or '(no active)')
-        self.active_pirep_label = QLabel("(no active)")
+        self.active_pirep_label = QLabel(NO_ACTIVE_TEXT)
         self.active_pirep_label.setVisible(False)
 
         # Bridge summary label (right side, before Logout)
@@ -532,7 +534,7 @@ class MainWindow(QMainWindow):
         self.status_bar.addPermanentWidget(self.logout_button)
         # Initialize as no active on entry
         try:
-            self.active_pirep_label.setText("(no active)")
+            self.active_pirep_label.setText(NO_ACTIVE_TEXT)
         except Exception:
             pass
 
@@ -684,7 +686,7 @@ class MainWindow(QMainWindow):
                         except Exception:
                             pass
                 if not text_set:
-                    self.active_pirep_label.setText("(no active)")
+                    self.active_pirep_label.setText(NO_ACTIVE_TEXT)
             except Exception:
                 pass
             # Update pagination controls based on meta
@@ -892,9 +894,9 @@ class MainWindow(QMainWindow):
                 # Fallback to data returned from server
                 dep = str((pirep_data or {}).get('dpt_airport_id') or "").upper()
                 arv = str((pirep_data or {}).get('arr_airport_id') or "").upper()
-                self.active_pirep_label.setText(f"{dep} → {arv}" if dep and arv else "(no active)")
+                self.active_pirep_label.setText(f"{dep} → {arv}" if dep and arv else NO_ACTIVE_TEXT)
         except Exception:
-            self.active_pirep_label.setText("(no active)")
+            self.active_pirep_label.setText(NO_ACTIVE_TEXT)
 
     def on_cancel_clicked(self):
         if not self.client or not self._workflow:
@@ -917,7 +919,7 @@ class MainWindow(QMainWindow):
         # Clear snapshot so next flight starts fresh
         self._initial_block_fuel_kg = None
         try:
-            self.active_pirep_label.setText("(no active)")
+            self.active_pirep_label.setText(NO_ACTIVE_TEXT)
         except Exception:
             pass
         self.status_bar.showMessage(f"Cancelled PIREP #{pid}")
@@ -929,31 +931,11 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No active PIREP", "There is no active PIREP to file.")
             return
         pid = self._active_pirep_id
-        # Minimal final data; phpVMS may accept partial; user can edit later in web UI if needed
         final_data: Dict[str, Any] = {
-            "notes": "Filed from Python client",
-            "route": self.current_flight_widget.route_text.toPlainText().strip() or None,
+            "flight_time": 0,
+            "fuel_used": 0,
+            "distance": 0,
         }
-        # Include planned fields if still available
-        try:
-            level_text = self.current_flight_widget.level_input.text().strip()
-            planned_distance_text = self.current_flight_widget.planned_distance_input.text().strip()
-            planned_time_text = self.current_flight_widget.planned_time_input.text().strip()
-            if level_text != "":
-                final_data["level"] = int(level_text)
-            if planned_distance_text != "":
-                val = int(planned_distance_text)
-                final_data["planned_distance"] = val
-                # Provide distance for filing per server tests (nm)
-                final_data["distance"] = val
-            if planned_time_text != "":
-                valt = int(planned_time_text)
-                final_data["planned_flight_time"] = valt
-                # Provide flight_time for filing (minutes)
-                final_data["flight_time"] = valt
-        except Exception:
-            pass
-        final_data = {k: v for k, v in final_data.items() if v is not None}
         self.show_progress(True)
         try:
             self._workflow.complete_flight(pid, final_data)
@@ -963,13 +945,11 @@ class MainWindow(QMainWindow):
             return
         self.show_progress(False)
         self.status_bar.showMessage(f"Filed PIREP #{pid} (PENDING)")
-        # After filing, consider no longer active
         self._active_pirep_id = None
-        # Clear snapshot so next flight starts fresh
         self._initial_block_fuel_kg = None
         try:
-            self.active_pirep_label.setText("(no active)")
-        except Exception:
+            self.active_pirep_label.setText(NO_ACTIVE_TEXT)
+        except:
             pass
 
     def on_cancel_selected_clicked(self, pid: str):
@@ -1027,9 +1007,9 @@ class MainWindow(QMainWindow):
             if route_text and route_text != "N/A":
                 self.active_pirep_label.setText(route_text)
             else:
-                self.active_pirep_label.setText("(no active)")
+                self.active_pirep_label.setText(NO_ACTIVE_TEXT)
         except Exception:
-            self.active_pirep_label.setText("(no active)")
+            self.active_pirep_label.setText(NO_ACTIVE_TEXT)
         self.status_bar.showMessage(f"Active PIREP set to #{pid}")
 
     def _on_pireps_selection_changed(self):
@@ -1065,7 +1045,7 @@ class MainWindow(QMainWindow):
         # Clear snapshot so next session starts fresh
         self._initial_block_fuel_kg = None
         try:
-            self.active_pirep_label.setText("(no active)")
+            self.active_pirep_label.setText(NO_ACTIVE_TEXT)
         except Exception:
             pass
 
@@ -1081,7 +1061,7 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Ready - Please login to continue")
         try:
             self.active_pirep_label.setVisible(False)
-            self.active_pirep_label.setText("(no active)")
+            self.active_pirep_label.setText(NO_ACTIVE_TEXT)
         except Exception:
             pass
 

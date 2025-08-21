@@ -132,11 +132,11 @@ local function build_payload()
     position = {
       lat = LATITUDE,
       lon = LONGITUDE,
-      altitude = feet(ELEVATION),
+      altitude_msl = feet(ELEVATION),
       gs = knots(gs_ms),
       sim_time = now(),
+      distance = nautical_miles(dist_m),
     },
-    dist = nautical_miles(dist_m),
     fuel = fuel_1 + fuel_2 + fuel_3 + fuel_4,
   }
   return payload

@@ -80,12 +80,19 @@ class SimulateTrackingWidget(QWidget):
         self.speed_spin.setSingleStep(10)
         row1.addWidget(self.speed_spin)
         row1.addSpacing(12)
-        row1.addWidget(QLabel("Altitude (ft):"))
-        self.alt_spin = QSpinBox()
-        self.alt_spin.setRange(0, 60000)
-        self.alt_spin.setValue(10000)
-        self.alt_spin.setSingleStep(500)
-        row1.addWidget(self.alt_spin)
+        row1.addWidget(QLabel("Alt MSL (ft):"))
+        self.alt_msl_spin = QSpinBox()
+        self.alt_msl_spin.setRange(0, 60000)
+        self.alt_msl_spin.setValue(10000)
+        self.alt_msl_spin.setSingleStep(500)
+        row1.addWidget(self.alt_msl_spin)
+        row1.addSpacing(12)
+        row1.addWidget(QLabel("Alt AGL (ft):"))
+        self.alt_agl_spin = QSpinBox()
+        self.alt_agl_spin.setRange(0, 60000)
+        self.alt_agl_spin.setValue(10000)
+        self.alt_agl_spin.setSingleStep(500)
+        row1.addWidget(self.alt_agl_spin)
         row1.addStretch()
         layout.addLayout(row1)
 
@@ -131,11 +138,69 @@ class SimulateTrackingWidget(QWidget):
         row3.addStretch()
         layout.addLayout(row3)
 
+        # Row for Distance (nm) and Fuel (kg) bases
+        row3b = QHBoxLayout()
+        row3b.addWidget(QLabel("Base Dist (nm):"))
+        self.base_dist = QDoubleSpinBox()
+        self.base_dist.setDecimals(1)
+        self.base_dist.setRange(0.0, 100000.0)
+        self.base_dist.setValue(500.0)
+        self.base_dist.setSingleStep(5.0)
+        self.base_dist.setMinimumWidth(110)
+        row3b.addWidget(self.base_dist)
+        row3b.addSpacing(16)
+        row3b.addWidget(QLabel("Base Fuel (kg):"))
+        self.base_fuel = QDoubleSpinBox()
+        self.base_fuel.setDecimals(1)
+        self.base_fuel.setRange(0.0, 200000.0)
+        self.base_fuel.setValue(5000.0)
+        self.base_fuel.setSingleStep(100.0)
+        self.base_fuel.setMinimumWidth(110)
+        row3b.addWidget(self.base_fuel)
+        row3b.addStretch()
+        layout.addLayout(row3b)
+
+        # Row for Dist/Fuel offsets (similar to lat/lon)
+        row3c = QHBoxLayout()
+        row3c.addWidget(QLabel("Dist change:"))
+        self.dist_delta = QDoubleSpinBox()
+        self.dist_delta.setDecimals(1)
+        self.dist_delta.setRange(0.0, 100000.0)
+        self.dist_delta.setValue(5.0)
+        self.dist_delta.setSingleStep(1.0)
+        row3c.addWidget(self.dist_delta)
+        self.dist_dir = QComboBox()
+        self.dist_dir.addItems(["+", "-"])  # default increase remaining distance
+        row3c.addWidget(self.dist_dir)
+        row3c.addSpacing(16)
+        row3c.addWidget(QLabel("Fuel change:"))
+        self.fuel_delta = QDoubleSpinBox()
+        self.fuel_delta.setDecimals(1)
+        self.fuel_delta.setRange(0.0, 200000.0)
+        self.fuel_delta.setValue(100.0)
+        self.fuel_delta.setSingleStep(10.0)
+        row3c.addWidget(self.fuel_delta)
+        self.fuel_dir = QComboBox()
+        self.fuel_dir.addItems(["-", "+"])  # default decrease remaining fuel
+        row3c.addWidget(self.fuel_dir)
+        row3c.addStretch()
+        layout.addLayout(row3c)
+
         last_sent_lat = QSettings().value("bridge_status_widget/last_sent_lat")
         last_sent_lon = QSettings().value("bridge_status_widget/last_sent_lon")
         if last_sent_lat is not None and last_sent_lon is not None:
             self.base_lat.setValue(float(last_sent_lat))
             self.base_lon.setValue(float(last_sent_lon))
+        # Restore last dist/fuel if available
+        last_dist = QSettings().value("bridge_status_widget/last_sent_dist")
+        last_fuel = QSettings().value("bridge_status_widget/last_sent_fuel")
+        try:
+            if last_dist is not None:
+                self.base_dist.setValue(float(last_dist))
+            if last_fuel is not None:
+                self.base_fuel.setValue(float(last_fuel))
+        except Exception:
+            pass
 
         row4 = QHBoxLayout()
         self.send_btn = QPushButton("Send")
@@ -209,16 +274,36 @@ class SimulateTrackingWidget(QWidget):
 
         status = self.status_combo.currentData() or "INI"
         gs = int(self.speed_spin.value())
-        alt = int(self.alt_spin.value())
+        alt_msl = int(self.alt_msl_spin.value())
+        alt_agl = int(self.alt_agl_spin.value())
+
+        # Compute new dist/fuel using base +/- delta
+        cur_dist = float(self.base_dist.value())
+        cur_fuel = float(self.base_fuel.value())
+        ddist = float(self.dist_delta.value())
+        dfuel = float(self.fuel_delta.value())
+        if self.dist_dir.currentText() == "-":
+            new_dist = max(0.0, cur_dist - ddist)
+        else:
+            new_dist = cur_dist + ddist
+        if self.fuel_dir.currentText() == "-":
+            new_fuel = max(0.0, cur_fuel - dfuel)
+        else:
+            new_fuel = cur_fuel + dfuel
+
         payload = {
             "status": status,
             "position": {
                 "lat": round(new_lat, 6),
                 "lon": round(new_lon, 6),
-                "altitude": alt,
+                "altitude_msl": alt_msl,
+                "altitude_agl": alt_agl,
                 "gs": gs,
                 "sim_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-            }
+                "distance": round(new_dist, 1),
+            },
+            # As per bridge expectations and docs, send these names:
+            "fuel": round(new_fuel, 1),    # kilograms remaining
         }
 
         host = "127.0.0.1"
@@ -230,10 +315,17 @@ class SimulateTrackingWidget(QWidget):
                 sock.sendto(data, (host, port))
             finally:
                 sock.close()
-            self.info_label.setText(f"Sent {status} to {host}:{port} lat={payload['position']['lat']} lon={payload['position']['lon']}")
+            self.info_label.setText(
+                f"Sent {status} to {host}:{port} lat={payload['position']['lat']} lon={payload['position']['lon']} dist={payload['position']['distance']}nm fuel={payload['fuel']}kg"
+            )
+            # Update bases to the new values for step-wise repetition
             self.base_lat.setValue(new_lat)
             self.base_lon.setValue(new_lon)
+            self.base_dist.setValue(new_dist)
+            self.base_fuel.setValue(new_fuel)
             QSettings().setValue("bridge_status_widget/last_sent_lat", new_lat)
             QSettings().setValue("bridge_status_widget/last_sent_lon", new_lon)
+            QSettings().setValue("bridge_status_widget/last_sent_dist", new_dist)
+            QSettings().setValue("bridge_status_widget/last_sent_fuel", new_fuel)
         except Exception as e:
             self.info_label.setText(f"Error: {e}")

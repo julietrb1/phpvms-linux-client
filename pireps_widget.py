@@ -1,8 +1,9 @@
 """
 PirepsWidget - lists PIREPs, supports selection helpers and pagination
 """
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import List, Optional
+
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from vms_types import Pirep
+
 try:
     from phpvms_api_client import PirepState
 except Exception:  # pragma: no cover
@@ -42,7 +44,6 @@ class PirepsWidget(QWidget):
 
         # Header with refresh + pagination controls
         header_layout = QHBoxLayout()
-        header_layout.addWidget(QLabel("Previous PIREPs"))
         header_layout.addStretch()
 
         # Pagination controls
