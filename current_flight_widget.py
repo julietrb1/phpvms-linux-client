@@ -51,7 +51,7 @@ class CurrentFlightWidget(QWidget):
         form.addRow("ACARS flight number:", self.acars_flight_number_input)
 
         self.simbrief_flight_number_input = QLineEdit()
-        form.addRow("ACARS flight number:", self.simbrief_flight_number_input)
+        form.addRow("SimBrief flight number:", self.simbrief_flight_number_input)
 
         self.leg_input = QLineEdit()
         form.addRow("Leg:", self.leg_input)

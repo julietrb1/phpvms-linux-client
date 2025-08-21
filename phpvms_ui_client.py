@@ -236,7 +236,7 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         """Set up the main UI"""
         self.setWindowTitle("phpVMS API Client")
-        self.setMinimumSize(800, 700)
+        self.setMinimumSize(800, 750)
 
         # Central widget
         central_widget = QWidget()
