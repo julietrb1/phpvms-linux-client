@@ -91,15 +91,17 @@ dataref("fuel_2", "sim/cockpit2/fuel/fuel_quantity", "readonly", 1)
 dataref("fuel_3", "sim/cockpit2/fuel/fuel_quantity", "readonly", 2)
 dataref("fuel_4", "sim/cockpit2/fuel/fuel_quantity", "readonly", 3)
 dataref("flight_time_sec", "sim/time/total_flight_time_sec", "readonly", 3)
-
+dataref("trk_mag", "sim/flightmodel/position/hpath", "readonly")
+dataref("ias", "sim/flightmodel/position/indicated_airspeed", "readonly")
+dataref("vs_ms", "sim/flightmodel/position/vh_ind", "readonly")
 -- =====================
 -- Helpers
 -- =====================
 local last_sent = 0
 local last_status = "INI"
 
-local function knots(mps)
-  return (mps or 0) * 1.94384
+local function knots(ms)
+  return (ms or 0) * 1.94384
 end
 
 local function feet(m)
@@ -108,6 +110,10 @@ end
 
 local function nautical_miles(metres)
     return (metres or 0) / 1852
+end
+
+local function fpm(ms)
+    return (ms or 0) * 196.85
 end
 
 local function detect_status()
@@ -137,6 +143,9 @@ local function build_payload()
       gs = knots(gs_ms),
       sim_time = now(),
       distance = nautical_miles(dist_m),
+      heading = trk_mag,
+      ias = ias,
+      vs = fpm(vs_ms),
     },
     fuel = fuel_1 + fuel_2 + fuel_3 + fuel_4,
     flight_time = flight_time_sec / 60,

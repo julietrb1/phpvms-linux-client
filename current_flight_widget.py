@@ -1,12 +1,12 @@
 """
 CurrentFlightWidget - enter current flight information, SimBrief import controls
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QFormLayout, QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QComboBox
+    QWidget, QVBoxLayout, QFormLayout, QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QComboBox, QLabel
 )
 
 
@@ -19,10 +19,25 @@ class CurrentFlightWidget(QWidget):
         self.prefile_button = QPushButton("Prefile")
         self.file_button = QPushButton("File PIREP")
         self.cancel_button = QPushButton("Cancel PIREP")
+        # Placeholders for UDP labels initialized in setup_ui
+        self.udp_status: Optional[QLabel] = None
+        self.udp_flight_time: Optional[QLabel] = None
+        self.udp_distance: Optional[QLabel] = None
+        self.udp_fuel: Optional[QLabel] = None
+        self.udp_lat: Optional[QLabel] = None
+        self.udp_lon: Optional[QLabel] = None
+        self.udp_alt_msl: Optional[QLabel] = None
+        self.udp_alt_agl: Optional[QLabel] = None
+        self.udp_heading: Optional[QLabel] = None
+        self.udp_gs: Optional[QLabel] = None
+        self.udp_sim_time: Optional[QLabel] = None
         self.setup_ui()
 
     def setup_ui(self):
-        layout = QVBoxLayout()
+        # Split into two columns: left (form) and right (live UDP data)
+        outer = QHBoxLayout()
+
+        left_col = QVBoxLayout()
 
         form = QFormLayout()
 
@@ -111,17 +126,61 @@ class CurrentFlightWidget(QWidget):
         self.planned_time_input.setValidator(QIntValidator(0, 100000, self))
         form.addRow("Planned Flight Time:", self.planned_time_input)
 
-        layout.addLayout(form)
+        # Left column content
+        left_col.addLayout(form)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_row.addWidget(self.prefile_button)
         btn_row.addWidget(self.file_button)
         btn_row.addWidget(self.cancel_button)
-        layout.addLayout(btn_row)
+        left_col.addLayout(btn_row)
+        left_col.addStretch()
 
-        layout.addStretch()
-        self.setLayout(layout)
+        # Right column with latest UDP data
+        right_col = QVBoxLayout()
+        right_col.addWidget(QLabel("Latest UDP Data"))
+        self.udp_status = QLabel("-")
+        self.udp_flight_time = QLabel("-")
+        self.udp_distance = QLabel("-")
+        self.udp_fuel = QLabel("-")
+        self.udp_lat = QLabel("-")
+        self.udp_lon = QLabel("-")
+        self.udp_alt_msl = QLabel("-")
+        self.udp_alt_agl = QLabel("-")
+        self.udp_heading = QLabel("-")
+        self.udp_gs = QLabel("-")
+        self.udp_ias = QLabel("-")
+        self.udp_vs = QLabel("-")
+        self.udp_sim_time = QLabel("-")
+
+        # Use simple rows
+        def row(lbl: str, widget: QLabel):
+            r = QHBoxLayout()
+            r.addWidget(QLabel(lbl))
+            r.addStretch()
+            r.addWidget(widget)
+            return r
+        right_col.addLayout(row("Status:", self.udp_status))
+        right_col.addLayout(row("Flight Time:", self.udp_flight_time))
+        right_col.addLayout(row("Distance (nm):", self.udp_distance))
+        right_col.addLayout(row("Fuel (kg):", self.udp_fuel))
+        right_col.addLayout(row("Lat:", self.udp_lat))
+        right_col.addLayout(row("Lon:", self.udp_lon))
+        right_col.addLayout(row("Alt MSL (ft):", self.udp_alt_msl))
+        right_col.addLayout(row("Alt AGL (ft):", self.udp_alt_agl))
+        right_col.addLayout(row("Heading:", self.udp_heading))
+        right_col.addLayout(row("GS (kts):", self.udp_gs))
+        right_col.addLayout(row("IAS (kts):", self.udp_ias))
+        right_col.addLayout(row("VS (fpm):", self.udp_vs))
+        right_col.addLayout(row("Sim Time:", self.udp_sim_time))
+        right_col.addStretch()
+
+        # Assemble outer layout
+        outer.addLayout(left_col, 3)
+        outer.addSpacing(12)
+        outer.addLayout(right_col, 2)
+        self.setLayout(outer)
 
     def set_airlines(self, airlines: List[Dict[str, Any]]):
         self.airline_combo.clear()
@@ -154,3 +213,57 @@ class CurrentFlightWidget(QWidget):
         self.aircraft_combo.clear()
         for disp, ac in names:
             self.aircraft_combo.addItem(str(disp), userData=ac)
+
+    def update_udp_snapshot(self, snap: Dict[str, Any]):
+        try:
+            if not isinstance(snap, dict):
+                return
+            st = snap.get("last_status")
+            if self.udp_status is not None:
+                self.udp_status.setText(str(st) if st is not None else "-")
+            # Flight time may be minutes or seconds depending on Lua; display raw number with unit hint
+            ft = snap.get("last_flight_time")
+            if self.udp_flight_time is not None:
+                try:
+                    self.udp_flight_time.setText(f"{float(ft):.1f}")
+                except Exception:
+                    self.udp_flight_time.setText(str(ft) if ft is not None else "-")
+            dist = snap.get("last_dist")
+            if self.udp_distance is not None:
+                try:
+                    self.udp_distance.setText(f"{float(dist):.1f}")
+                except Exception:
+                    self.udp_distance.setText(str(dist) if dist is not None else "-")
+            fuel = snap.get("last_fuel")
+            if self.udp_fuel is not None:
+                try:
+                    self.udp_fuel.setText(f"{float(fuel):.1f}")
+                except Exception:
+                    self.udp_fuel.setText(str(fuel) if fuel is not None else "-")
+            pos = snap.get("last_position") or {}
+            if isinstance(pos, dict):
+                def _set(lbl: Optional[QLabel], key: str, fmt: str = "{}"):  # type: ignore
+                    if lbl is None:
+                        return
+                    val = pos.get(key)
+                    try:
+                        if isinstance(val, (int, float)):
+                            lbl.setText(fmt.format(val))
+                        else:
+                            lbl.setText(str(val) if val is not None else "-")
+                    except Exception:
+                        lbl.setText(str(val) if val is not None else "-")
+                _set(self.udp_lat, "lat", "{:.6f}")
+                _set(self.udp_lon, "lon", "{:.6f}")
+                _set(self.udp_alt_msl, "altitude_msl", "{:.0f}")
+                _set(self.udp_alt_agl, "altitude_agl", "{:.0f}")
+                _set(self.udp_heading, "heading", "{:.0f}")
+                _set(self.udp_gs, "gs", "{:.0f}")
+                _set(self.udp_ias, "ias", "{:.0f}")
+                _set(self.udp_vs, "vs", "{:.0f}")
+                # sim_time might be ISO string
+                if self.udp_sim_time is not None:
+                    stime = pos.get("sim_time")
+                    self.udp_sim_time.setText(str(stime) if stime is not None else "-")
+        except Exception:
+            pass

@@ -93,6 +93,20 @@ class SimulateTrackingWidget(QWidget):
         self.alt_agl_spin.setValue(10000)
         self.alt_agl_spin.setSingleStep(500)
         row1.addWidget(self.alt_agl_spin)
+        row1.addSpacing(12)
+        row1.addWidget(QLabel("IAS (kts):"))
+        self.ias_spin = QSpinBox()
+        self.ias_spin.setRange(0, 2000)
+        self.ias_spin.setValue(250)
+        self.ias_spin.setSingleStep(10)
+        row1.addWidget(self.ias_spin)
+        row1.addSpacing(12)
+        row1.addWidget(QLabel("VS (fpm):"))
+        self.vs_spin = QSpinBox()
+        self.vs_spin.setRange(-10000, 10000)
+        self.vs_spin.setValue(0)
+        self.vs_spin.setSingleStep(100)
+        row1.addWidget(self.vs_spin)
         row1.addStretch()
         layout.addLayout(row1)
 
@@ -276,6 +290,8 @@ class SimulateTrackingWidget(QWidget):
         gs = int(self.speed_spin.value())
         alt_msl = int(self.alt_msl_spin.value())
         alt_agl = int(self.alt_agl_spin.value())
+        ias = int(self.ias_spin.value())
+        vs = int(self.vs_spin.value())
 
         # Compute new dist/fuel using base +/- delta
         cur_dist = float(self.base_dist.value())
@@ -301,6 +317,8 @@ class SimulateTrackingWidget(QWidget):
                 "gs": gs,
                 "sim_time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
                 "distance": round(new_dist, 1),
+                "ias": ias,
+                "vs": vs,
             },
             # As per bridge expectations and docs, send these names:
             "fuel": round(new_fuel, 1),    # kilograms remaining

@@ -47,6 +47,7 @@ class UdpBridge:
         self._last_position: Optional[Dict[str, Any]] = None
         self._last_dist: Optional[float] = None
         self._last_fuel: Optional[float] = None
+        self._last_flight_time: Optional[float] = None
         self._log: List[str] = []  # rolling log strings
         self._max_log_lines: int = 500
 
@@ -91,6 +92,7 @@ class UdpBridge:
                 "last_position": dict(self._last_position) if isinstance(self._last_position, dict) else None,
                 "last_dist": self._last_dist,
                 "last_fuel": self._last_fuel,
+                "last_flight_time": self._last_flight_time,
                 "log": list(self._log),
             }
 
@@ -145,10 +147,15 @@ class UdpBridge:
         if isinstance(status, str) and status:
             with self._lock:
                 self._last_status = status
+        # Root-level flight_time (minutes or seconds as provided by Lua)
+        ft_val = payload.get("flight_time")
+        if isinstance(ft_val, (int, float)):
+            with self._lock:
+                self._last_flight_time = float(ft_val)
         pos = payload.get("position") or {}
         if isinstance(pos, dict):
             with self._lock:
-                self._last_position = {k: pos.get(k) for k in ("lat", "lon", "altitude_msl", "altitude_agl", "heading", "gs", "sim_time", "distance")}
+                self._last_position = {k: pos.get(k) for k in ("lat", "lon", "altitude_msl", "altitude_agl", "heading", "gs", "sim_time", "distance", "ias", "vs")}
         try:
             dist_val = pos.get("distance")
             fuel_val = payload.get("fuel")
@@ -162,7 +169,7 @@ class UdpBridge:
 
         try:
             if isinstance(status, str) and status and callable(self._status_handler):
-                self._status_handler(status, pos.get("distance"), payload.get("fuel"))
+                self._status_handler(status, pos.get("distance"), payload.get("fuel"), self._last_flight_time)
         except Exception as e:
             with self._lock:
                 self._packets_err += 1
@@ -193,7 +200,7 @@ class UdpBridge:
             s = status or "-"
             p = self._last_position or {}
             self._append_log(
-                f"OK: st={s} lat={p.get('lat')} lon={p.get('lon')} alt_msl={p.get('altitude_msl')} alt_agl={p.get('altitude_agl')} gs={p.get('gs')} dist={self._last_dist}nm fuel={self._last_fuel}kg"
+                f"OK: st={s} lat={p.get('lat')} lon={p.get('lon')} alt_msl={p.get('altitude_msl')} alt_agl={p.get('altitude_agl')} gs={p.get('gs')} dist={self._last_dist}nm fuel={self._last_fuel}kg ft={self._last_flight_time}"
             )
 
 

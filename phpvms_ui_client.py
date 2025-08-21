@@ -220,6 +220,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._last_fuel_used = None
         self._last_distance = None
+        self._last_flight_time = None
         self._initial_block_fuel_kg = None
         self.tabs = None
         self.bridge_status_widget = None
@@ -929,7 +930,7 @@ class MainWindow(QMainWindow):
             return
         pid = self._active_pirep_id
         final_data: Dict[str, Any] = {
-            "flight_time": 0,
+            "flight_time": self._last_flight_time,
             "fuel_used": self._last_fuel_used,
             "distance": self._last_distance,
         }
@@ -1094,7 +1095,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         # Create/start new with handler callbacks; the handlers consult self._active_pirep_id internally
-        def _status_handler(status: str, distance: Optional[float], fuel: Optional[float]):
+        def _status_handler(status: str, distance: Optional[float], fuel: Optional[float], flight_time: Optional[float]):
             try:
                 pid = self._active_pirep_id
                 if not pid:
@@ -1118,6 +1119,9 @@ class MainWindow(QMainWindow):
                     except Exception:
                         # If anything goes wrong, skip fuel_used for this update
                         pass
+                if flight_time is not None:
+                    payload["flight_time"] = flight_time
+                    self._last_flight_time = flight_time
                 # Send update; ignore failures here
                 self.client.update_pirep(pid, payload)
             except Exception:
@@ -1128,7 +1132,6 @@ class MainWindow(QMainWindow):
                 pid = self._active_pirep_id
                 if not pid:
                     return
-                self._last_
                 self.client.post_acars_position(pid, positions=[pos])
             except Exception:
                 pass
@@ -1177,6 +1180,17 @@ class MainWindow(QMainWindow):
         self.bridge_summary_label.setText(self._udp_bridge.status_summary())
         self.bridge_status_widget.update_from_snapshot(snap)
         self.bridge_status_widget.set_controls_state(snap.get("running", False))
+        # Update current flight panel with latest UDP data and store flight_time
+        try:
+            self.current_flight_widget.update_udp_snapshot(snap)
+        except Exception:
+            pass
+        try:
+            ft = snap.get("last_flight_time")
+            if isinstance(ft, (int, float)):
+                self._last_flight_time = ft
+        except Exception:
+            pass
 
     def show_progress(self, show: bool):
         """Refcounted progress indicator across concurrent operations."""
