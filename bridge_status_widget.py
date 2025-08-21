@@ -4,14 +4,17 @@ BridgeStatusWidget - shows UDP bridge status and log, start/stop controls
 from typing import Dict, Any
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QTextEdit
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QTextEdit, QCheckBox
 )
+
+from simulate_tracking_widget import SimulateTrackingWidget
 
 
 class BridgeStatusWidget(QWidget):
     """Detailed status view for the UDP bridge."""
     start_requested = Signal()
     stop_requested = Signal()
+    debug_toggled = Signal(bool)
 
     def __init__(self):
         super().__init__()
@@ -57,6 +60,9 @@ class BridgeStatusWidget(QWidget):
         ctrl.addSpacing(8)
         ctrl.addWidget(self.start_btn)
         ctrl.addWidget(self.stop_btn)
+        ctrl.addSpacing(12)
+        self.debug_checkbox = QCheckBox("API debug logs")
+        ctrl.addWidget(self.debug_checkbox)
         ctrl.addStretch()
         layout.addLayout(ctrl)
 
@@ -66,11 +72,24 @@ class BridgeStatusWidget(QWidget):
         self.log_view.setPlaceholderText("Bridge log will appear here...")
         layout.addWidget(self.log_view)
 
+        # Simulate tracking widget below the log
+        self.sim_widget = SimulateTrackingWidget()
+        # Provide current port to the simulator (falls back to 47777 if empty)
+        def _get_port():
+            try:
+                txt = (self.port_input.text() or '').strip()
+                return int(txt) if txt else 47777
+            except Exception:
+                return 47777
+        self.sim_widget.set_port_getter(_get_port)
+        layout.addWidget(self.sim_widget)
+
         self.setLayout(layout)
 
         # Wire signals
         self.start_btn.clicked.connect(self.start_requested.emit)
         self.stop_btn.clicked.connect(self.stop_requested.emit)
+        self.debug_checkbox.toggled.connect(self.debug_toggled.emit)
 
     def update_from_snapshot(self, snap: Dict[str, Any]):
         running = snap.get("running", False)
@@ -99,3 +118,10 @@ class BridgeStatusWidget(QWidget):
     def set_controls_state(self, running: bool):
         self.start_btn.setEnabled(not running)
         self.stop_btn.setEnabled(running)
+
+    def set_debug_checked(self, checked: bool):
+        try:
+            self.debug_checkbox.blockSignals(True)
+            self.debug_checkbox.setChecked(bool(checked))
+        finally:
+            self.debug_checkbox.blockSignals(False)

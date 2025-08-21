@@ -9,6 +9,7 @@ Version: 1.0.0
 """
 
 import json
+import logging
 from dataclasses import dataclass, asdict
 from enum import Enum
 from typing import Dict, List, Optional, Union, Any
@@ -261,7 +262,7 @@ class PhpVmsApiClient:
     Provides methods for all available endpoints including flights, PIREPs, users, ACARS, and more.
     """
 
-    def __init__(self, base_url: str, api_key: Optional[str] = None, timeout: int = 30):
+    def __init__(self, base_url: str, api_key: Optional[str] = None, timeout: int = 30, debug: bool = False):
         """
         Initialize the phpVMS API client
 
@@ -269,12 +270,25 @@ class PhpVmsApiClient:
             base_url: The base URL of the phpVMS installation (e.g., 'https://your-phpvms.com')
             api_key: API key for authentication (if required)
             timeout: Request timeout in seconds
+            debug: Enable lightweight debug logging to stdout
         """
         self.base_url = base_url.rstrip('/')
         self.api_base = f"{self.base_url}/api"
         self.api_key = api_key
         self.timeout = timeout
         self.session = requests.Session()
+
+        # Logging
+        self._logger = logging.getLogger('phpvmsclient.api')
+        self._debug = bool(debug)
+        if self._debug:
+            self._logger.setLevel(logging.DEBUG)
+            if not self._logger.handlers:
+                handler = logging.StreamHandler()
+                handler.setLevel(logging.DEBUG)
+                formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(name)s: %(message)s', datefmt='%H:%M:%S')
+                handler.setFormatter(formatter)
+                self._logger.addHandler(handler)
 
         # Set default headers
         self.session.headers.update({
@@ -288,6 +302,22 @@ class PhpVmsApiClient:
             self.session.headers.update({
                 'X-API-Key': self.api_key
             })
+
+    def set_debug(self, enabled: bool) -> None:
+        """Enable or disable debug logging at runtime."""
+        self._debug = bool(enabled)
+        # Ensure a handler exists if enabling
+        if self._debug:
+            self._logger.setLevel(logging.DEBUG)
+            if not self._logger.handlers:
+                handler = logging.StreamHandler()
+                handler.setLevel(logging.DEBUG)
+                formatter = logging.Formatter('[%(asctime)s] %(levelname)s %(name)s: %(message)s', datefmt='%H:%M:%S')
+                handler.setFormatter(formatter)
+                self._logger.addHandler(handler)
+        else:
+            # Keep handlers but lower logger level; debug logs are gated by self._debug anyway
+            self._logger.setLevel(logging.WARNING)
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """
@@ -306,6 +336,11 @@ class PhpVmsApiClient:
         """
         url = f"{self.api_base}/{endpoint.lstrip('/')}"
 
+        if self._debug:
+            # Avoid dumping potentially large bodies; show keys instead
+            json_keys = list((kwargs.get('json') or {}).keys()) if 'json' in kwargs else None
+            self._logger.debug(f"REQ {method} {url} json_keys={json_keys}")
+
         try:
             response = self.session.request(
                 method=method,
@@ -313,6 +348,9 @@ class PhpVmsApiClient:
                 timeout=self.timeout,
                 **kwargs
             )
+
+            if self._debug:
+                self._logger.debug(f"RESP {response.status_code} {response.reason} for {method} {url}")
 
             # Handle different response types
             if response.headers.get('content-type', '').startswith('application/xml'):
@@ -325,6 +363,9 @@ class PhpVmsApiClient:
                 data = {'data': response.text}
 
             if not response.ok:
+                # Log a concise error with a small snippet of the response
+                snippet = response.text[:300] if hasattr(response, 'text') else ''
+                self._logger.error(f"HTTP {response.status_code} {response.reason} on {method} {url} resp_snippet={snippet}")
                 raise PhpVmsApiException(
                     message=f"API request failed: {response.status_code} - {response.reason}",
                     status_code=response.status_code,
@@ -334,6 +375,7 @@ class PhpVmsApiClient:
             return data
 
         except requests.exceptions.RequestException as e:
+            self._logger.error(f"Request exception on {method} {url}: {e}")
             raise PhpVmsApiException(f"Request failed: {str(e)}")
 
     def _get(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
@@ -482,6 +524,7 @@ class PhpVmsApiClient:
     def update_pirep(self, pirep_id: str, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Update an existing PIREP
+        Trigger PirepService::update via PUT /api/v1/pireps/{id}
         Args:
             pirep_id: The PIREP ID
             pirep_data: Updated PIREP data
@@ -489,7 +532,8 @@ class PhpVmsApiClient:
         Returns:
             Dict containing updated PIREP data
         """
-        return self._post(f'pireps/{pirep_id}/update', json_data=pirep_data)
+        # Use PUT to /pireps/{id} per phpVMS API spec
+        return self._put(f'pireps/{pirep_id}', json_data=pirep_data)
 
     def file_pirep(self, pirep_id: int, pirep_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -649,7 +693,7 @@ class PhpVmsApiClient:
         """
         return self._get(f'acars/{pirep_id}')
 
-    def post_acars_position(self, pirep_id: int, positions: Dict[str, Any]) -> Dict[str, Any]:
+    def post_acars_position(self, pirep_id: int, positions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Post ACARS position updates for a PIREP
 
@@ -808,7 +852,7 @@ class PhpVmsApiClient:
 # CONVENIENCE FUNCTIONS
 # ==========================================
 
-def create_client(base_url: str, api_key: Optional[str] = None, timeout: int = 30) -> PhpVmsApiClient:
+def create_client(base_url: str, api_key: Optional[str] = None, timeout: int = 30, debug: bool = False) -> PhpVmsApiClient:
     """
     Create a new phpVMS API client instance
 
@@ -816,11 +860,12 @@ def create_client(base_url: str, api_key: Optional[str] = None, timeout: int = 3
         base_url: The base URL of the phpVMS installation
         api_key: API key for authentication (if required)
         timeout: Request timeout in seconds
+        debug: Enable lightweight debug logging to stdout
 
     Returns:
         PhpVmsApiClient instance
     """
-    return PhpVmsApiClient(base_url=base_url, api_key=api_key, timeout=timeout)
+    return PhpVmsApiClient(base_url=base_url, api_key=api_key, timeout=timeout, debug=debug)
 
 
 # ==========================================
@@ -892,7 +937,7 @@ class FlightProgressTracker:
         }
         # Remove None values to keep payload concise
         pos = {k: v for k, v in pos.items() if v is not None}
-        return self.client.post_acars_position(self.pirep_id, positions=pos)
+        return self.client.post_acars_position(self.pirep_id, positions=[pos])
 
     def log_event(self, log: str, sim_time: Optional[int] = None) -> Dict[str, Any]:
         entry = {"log": log}

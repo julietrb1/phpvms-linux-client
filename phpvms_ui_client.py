@@ -296,6 +296,14 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.bridge_status_widget, "Status")
         self.tabs.setVisible(False)
 
+        # Initialize API debug checkbox from settings
+        settings = QSettings()
+        debug_enabled = bool(settings.value("api/debug", False, type=bool))
+        try:
+            self.bridge_status_widget.set_debug_checked(debug_enabled)
+        except Exception:
+            pass
+
         # Initially show login widget
         layout.addWidget(self.login_widget)
         layout.addWidget(self.tabs)
@@ -455,7 +463,10 @@ class MainWindow(QMainWindow):
         if success:
             # Store client and user data
             if self._base_url and self._api_key:
-                self.client = create_client(self._base_url, api_key=self._api_key)
+                # Apply persisted debug flag at client creation
+                settings = QSettings()
+                debug_enabled = bool(settings.value("api/debug", False, type=bool))
+                self.client = create_client(self._base_url, api_key=self._api_key, debug=debug_enabled)
             else:
                 # Fallback: try to reconstruct from user settings (shouldn't happen normally)
                 settings = QSettings()
@@ -464,7 +475,8 @@ class MainWindow(QMainWindow):
                 if base_url and api_key:
                     if not base_url.startswith(("http://", "https://")):
                         base_url = "https://" + base_url
-                    self.client = create_client(base_url, api_key=api_key)
+                    debug_enabled = bool(settings.value("api/debug", False, type=bool))
+                    self.client = create_client(base_url, api_key=api_key, debug=debug_enabled)
             self.user_data = user_data
             # Initialize workflow manager
             try:
@@ -513,9 +525,30 @@ class MainWindow(QMainWindow):
         # Wire bridge tab controls
         self.bridge_status_widget.start_requested.connect(self._on_bridge_start)
         self.bridge_status_widget.stop_requested.connect(self._on_bridge_stop)
+        # Wire debug toggle to persist and apply immediately
+        try:
+            self.bridge_status_widget.debug_toggled.connect(self._on_debug_toggled)
+        except Exception:
+            pass
 
         # Start UDP bridge automatically with default port
         self._start_udp_bridge()
+
+    def _on_debug_toggled(self, enabled: bool):
+        """Persist and apply API debug logging immediately."""
+        settings = QSettings()
+        settings.setValue("api/debug", bool(enabled))
+        # Reflect state in the checkbox without feedback loops
+        try:
+            self.bridge_status_widget.set_debug_checked(bool(enabled))
+        except Exception:
+            pass
+        # Apply to existing client without restart
+        try:
+            if self.client and hasattr(self.client, 'set_debug'):
+                self.client.set_debug(bool(enabled))
+        except Exception:
+            pass
 
     def refresh_pireps(self):
         """Refresh PIREPs data"""
@@ -995,7 +1028,7 @@ class MainWindow(QMainWindow):
                 pid = self._active_pirep_id
                 if not pid:
                     return
-                self.client.post_acars_position(pid, positions=pos)
+                self.client.post_acars_position(pid, positions=[pos])
             except Exception:
                 pass
 
@@ -1080,7 +1113,8 @@ class MainWindow(QMainWindow):
 
         if user_data:
             # Use cached user data; avoid calling get_current_user
-            self.client = create_client(base_url, api_key=api_key)
+            debug_enabled = bool(settings.value("api/debug", False, type=bool))
+            self.client = create_client(base_url, api_key=api_key, debug=debug_enabled)
             self.user_data = user_data
             self.user_info_widget.update_user_info(user_data)
             self.show_main_interface()
