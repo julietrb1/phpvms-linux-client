@@ -81,11 +81,15 @@ end
 -- =====================
 -- Position
 dataref("gs_ms", "sim/flightmodel/position/groundspeed", "readonly")     -- m/s
--- Flight state
 dataref("on_ground", "sim/flightmodel/failures/onground_any", "readonly")
 dataref("eng1_running", "sim/flightmodel/engine/ENGN_running", "readonly", 0)
 dataref("paused", "sim/time/paused", "readonly")
 dataref("radalt_ft", "sim/cockpit2/gauges/indicators/radio_altimeter_height_ft_pilot", "readonly")
+dataref("dist_m", "sim/flightmodel/controls/dist", "readonly")
+dataref("fuel_1", "sim/cockpit2/fuel/fuel_quantity", "readonly", 0)
+dataref("fuel_2", "sim/cockpit2/fuel/fuel_quantity", "readonly", 1)
+dataref("fuel_3", "sim/cockpit2/fuel/fuel_quantity", "readonly", 2)
+dataref("fuel_4", "sim/cockpit2/fuel/fuel_quantity", "readonly", 3)
 
 -- =====================
 -- Helpers
@@ -99,6 +103,10 @@ end
 
 local function feet(m)
   return (m or 0) * 3.28084
+end
+
+local function nautical_miles(metres)
+    return (metres or 0) / 1852
 end
 
 local function detect_status()
@@ -127,7 +135,9 @@ local function build_payload()
       altitude = feet(ELEVATION),
       gs = knots(gs_ms),
       sim_time = now(),
-    }
+    },
+    dist = nautical_miles(dist_m),
+    fuel = fuel_1 + fuel_2 + fuel_3 + fuel_4,
   }
   return payload
 end

@@ -355,6 +355,8 @@ class MainWindow(QMainWindow):
         # Active PIREP context
         self._active_pirep_id: Optional[str] = None
         self._workflow: Optional[PirepWorkflowManager] = None
+        # Snapshot of block fuel (kg) taken at flight start; not affected by later UI edits
+        self._initial_block_fuel_kg: Optional[float] = None
 
     def setup_connections(self):
         """Set up signal connections"""
@@ -848,6 +850,11 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Missing fields", "Please select airline, aircraft, and enter both departure and arrival.")
                 return
             self.show_progress(True)
+            # Snapshot initial block fuel for this flight; this will be used to compute fuel_used
+            try:
+                self._initial_block_fuel_kg = float(block_fuel) if block_fuel is not None else None
+            except Exception:
+                self._initial_block_fuel_kg = None
             pirep = self._workflow.start_flight(flight_data)
         except Exception as e:
             self.show_progress(False)
@@ -907,6 +914,8 @@ class MainWindow(QMainWindow):
         finally:
             self.show_progress(False)
         self._active_pirep_id = None
+        # Clear snapshot so next flight starts fresh
+        self._initial_block_fuel_kg = None
         try:
             self.active_pirep_label.setText("(no active)")
         except Exception:
@@ -956,6 +965,8 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"Filed PIREP #{pid} (PENDING)")
         # After filing, consider no longer active
         self._active_pirep_id = None
+        # Clear snapshot so next flight starts fresh
+        self._initial_block_fuel_kg = None
         try:
             self.active_pirep_label.setText("(no active)")
         except Exception:
@@ -1008,6 +1019,8 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
         self._active_pirep_id = pid
+        # Reset initial block fuel snapshot; will be set from first fuel packet for this active flight
+        self._initial_block_fuel_kg = None
         # Update status bar active label with route text if available
         try:
             route_text = self.pireps_widget.get_selected_route()
@@ -1049,6 +1062,8 @@ class MainWindow(QMainWindow):
         self.user_data = None
         self._workflow = None
         self._active_pirep_id = None
+        # Clear snapshot so next session starts fresh
+        self._initial_block_fuel_kg = None
         try:
             self.active_pirep_label.setText("(no active)")
         except Exception:
@@ -1102,16 +1117,28 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
         # Create/start new with handler callbacks; the handlers consult self._active_pirep_id internally
-        def _status_handler(status: str, distance: Optional[float], fuel_used: Optional[float]):
+        def _status_handler(status: str, distance: Optional[float], fuel: Optional[float]):
             try:
                 pid = self._active_pirep_id
                 if not pid:
                     return
                 payload: Dict[str, Any] = {"status": status}
                 if distance is not None:
+                    # Distance already in nautical miles from Lua; pass through
                     payload["distance"] = distance
-                if fuel_used is not None:
-                    payload["fuel_used"] = fuel_used
+                if fuel is not None:
+                    # 'fuel' from UDP is fuel remaining (kg). Convert to fuel used using the initial snapshot.
+                    try:
+                        fuel_remaining = float(fuel)
+                        if self._initial_block_fuel_kg is None:
+                            # If no snapshot yet (e.g., user didn't enter block fuel or attached to existing flight),
+                            # set the snapshot to the first observed remaining value.
+                            self._initial_block_fuel_kg = fuel_remaining
+                        fuel_used = max(0.0, float(self._initial_block_fuel_kg) - fuel_remaining)
+                        payload["fuel_used"] = fuel_used
+                    except Exception:
+                        # If anything goes wrong, skip fuel_used for this update
+                        pass
                 # Send update; ignore failures here
                 self.client.update_pirep(pid, payload)
             except Exception:

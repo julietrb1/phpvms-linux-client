@@ -153,7 +153,7 @@ class UdpBridge:
 
         try:
             if isinstance(status, str) and status and callable(self._status_handler):
-                self._status_handler(status, payload.get("distance"), payload.get("fuel_used"))
+                self._status_handler(status, payload.get("dist"), payload.get("fuel"))
         except Exception as e:
             with self._lock:
                 self._packets_err += 1
