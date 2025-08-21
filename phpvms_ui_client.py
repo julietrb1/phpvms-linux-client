@@ -779,6 +779,10 @@ class MainWindow(QMainWindow):
             if block_fuel:
                 self.current_flight_widget.block_fuel_input.setText(str(int(block_fuel)))
 
+            simbrief_flight_number = general.get("flight_number")
+            if simbrief_flight_number:
+                self.current_flight_widget.simbrief_flight_number_input.setText(simbrief_flight_number)
+
             self.status_bar.showMessage("SimBrief OFP imported")
         finally:
             self.show_progress(False)
@@ -801,7 +805,7 @@ class MainWindow(QMainWindow):
             airline = self.current_flight_widget.airline_combo.currentData()
             aircraft = self.current_flight_widget.aircraft_combo.currentData()
             flight_type = self.current_flight_widget.flight_type_combo.currentData()
-            flight_number = self.current_flight_widget.flight_number_input.text().strip() or None
+            flight_number = self.current_flight_widget.acars_flight_number_input.text().strip() or None
             dpt = self.current_flight_widget.dep_input.text().strip().upper()
             arr = self.current_flight_widget.arr_input.text().strip().upper()
             alt = self.current_flight_widget.alt_input.text().strip().upper()
@@ -812,6 +816,9 @@ class MainWindow(QMainWindow):
             level = int(level_text) if level_text != "" else None
             planned_distance = int(planned_distance_text) if planned_distance_text != "" else None
             planned_flight_time = int(planned_time_text) if planned_time_text != "" else None
+            block_fuel_text = self.current_flight_widget.block_fuel_input.text().strip()
+            block_fuel = int(block_fuel_text) if block_fuel_text != "" else None
+            simbrief_flight_number = self.current_flight_widget.simbrief_flight_number_input.text().strip() or None
             flight_data: Dict[str, Any] = {
                 "airline_id": int(airline.get('id')) if isinstance(airline, dict) and airline.get('id') else None,
                 "aircraft_id": int(aircraft.get('id')) if isinstance(aircraft, dict) and aircraft.get('id') else None,
@@ -824,10 +831,15 @@ class MainWindow(QMainWindow):
                 "level": level,
                 "planned_distance": planned_distance,
                 "planned_flight_time": planned_flight_time,
+                "block_fuel": block_fuel,
                 "source": 1,
                 "source_name": "vmsacars",
                 "fields": {
-                    "Simulator": "X-Plane 12"
+                    "Simulator": "X-Plane 12",
+                    "Unlimited Fuel": "Off",
+                    "Network Online": "VATSIM",
+                    "Network Callsign Check": "0",
+                    "Network Callsign Used": simbrief_flight_number,
                 }
             }
             # Remove None values
@@ -852,19 +864,7 @@ class MainWindow(QMainWindow):
             if not pid:
                 raise ValueError("No PIREP id in response")
             self._active_pirep_id = pid
-            # Update active route label using known inputs
-            try:
-                dpt_txt = dpt if isinstance(dpt, str) else ""
-                arr_txt = arr if isinstance(arr, str) else ""
-                if dpt_txt and arr_txt:
-                    self.active_pirep_label.setText(f"{dpt_txt} → {arr_txt}")
-                else:
-                    # Fallback to data returned from server
-                    dep = str((pirep_data or {}).get('dpt_airport_id') or "").upper()
-                    arv = str((pirep_data or {}).get('arr_airport_id') or "").upper()
-                    self.active_pirep_label.setText(f"{dep} → {arv}" if dep and arv else "(no active)")
-            except Exception:
-                self.active_pirep_label.setText("(no active)")
+            self.update_active_route_label(arr, dpt, pirep_data)
             # also reflect in user_data for persistence, if desired
             try:
                 if isinstance(self.user_data, dict):
@@ -874,6 +874,20 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Prefiled PIREP #{pid} (IN_PROGRESS)")
         except Exception:
             self.status_bar.showMessage("Prefiled PIREP (id unknown)")
+
+    def update_active_route_label(self, arr, dpt, pirep_data):
+        try:
+            dpt_txt = dpt if isinstance(dpt, str) else ""
+            arr_txt = arr if isinstance(arr, str) else ""
+            if dpt_txt and arr_txt:
+                self.active_pirep_label.setText(f"{dpt_txt} → {arr_txt}")
+            else:
+                # Fallback to data returned from server
+                dep = str((pirep_data or {}).get('dpt_airport_id') or "").upper()
+                arv = str((pirep_data or {}).get('arr_airport_id') or "").upper()
+                self.active_pirep_label.setText(f"{dep} → {arv}" if dep and arv else "(no active)")
+        except Exception:
+            self.active_pirep_label.setText("(no active)")
 
     def on_cancel_clicked(self):
         if not self.client or not self._workflow:

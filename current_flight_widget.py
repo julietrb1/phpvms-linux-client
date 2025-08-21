@@ -2,6 +2,7 @@
 CurrentFlightWidget - enter current flight information, SimBrief import controls
 """
 from typing import List, Dict, Any
+
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
@@ -30,7 +31,6 @@ class CurrentFlightWidget(QWidget):
         self.simbrief_id_input = QLineEdit()
         self.simbrief_id_input.setPlaceholderText("SimBrief ID (numeric)")
         self.simbrief_id_input.setValidator(QIntValidator(0, 99999999, self))
-        # Load cached SimBrief user id
         try:
             sb_id = QSettings().value("simbrief/userid", "")
             if sb_id:
@@ -46,9 +46,12 @@ class CurrentFlightWidget(QWidget):
         self.airline_combo = QComboBox()
         form.addRow("Airline:", self.airline_combo)
 
-        self.flight_number_input = QLineEdit()
-        self.flight_number_input.setText("1")
-        form.addRow("Flight Number:", self.flight_number_input)
+        self.acars_flight_number_input = QLineEdit()
+        self.acars_flight_number_input.setText("1")
+        form.addRow("ACARS flight number:", self.acars_flight_number_input)
+
+        self.simbrief_flight_number_input = QLineEdit()
+        form.addRow("ACARS flight number:", self.simbrief_flight_number_input)
 
         self.leg_input = QLineEdit()
         form.addRow("Leg:", self.leg_input)
