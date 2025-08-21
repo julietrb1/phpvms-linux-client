@@ -212,25 +212,22 @@ class MainWindow(QMainWindow):
                 hh = int(s[:-2])
                 mm = int(s[-2:])
                 return hh*60 + mm
-            # Fallback: try int directly
             return int(s)
         except Exception:
             return None
-    """Main application window"""
 
     def __init__(self):
         super().__init__()
+        self._last_fuel_used = None
+        self._last_distance = None
         self._initial_block_fuel_kg = None
         self.tabs = None
         self.bridge_status_widget = None
         self._active_pirep_id = None
         self.client = None
         self.user_data = None
-        # Active workers list to keep references until finished
         self._workers: List[ApiWorker] = []
-        # Track in-flight operations for proper progress bar behavior
         self._inflight_ops = 0
-        # Store last login credentials for client recreation
         self._base_url: Optional[str] = None
         self._api_key: Optional[str] = None
         self.setup_ui()
@@ -933,8 +930,8 @@ class MainWindow(QMainWindow):
         pid = self._active_pirep_id
         final_data: Dict[str, Any] = {
             "flight_time": 0,
-            "fuel_used": 0,
-            "distance": 0,
+            "fuel_used": self._last_fuel_used,
+            "distance": self._last_distance,
         }
         self.show_progress(True)
         try:
@@ -1106,6 +1103,7 @@ class MainWindow(QMainWindow):
                 if distance is not None:
                     # Distance already in nautical miles from Lua; pass through
                     payload["distance"] = distance
+                    self._last_distance = distance
                 if fuel is not None:
                     # 'fuel' from UDP is fuel remaining (kg). Convert to fuel used using the initial snapshot.
                     try:
@@ -1116,6 +1114,7 @@ class MainWindow(QMainWindow):
                             self._initial_block_fuel_kg = fuel_remaining
                         fuel_used = max(0.0, float(self._initial_block_fuel_kg) - fuel_remaining)
                         payload["fuel_used"] = fuel_used
+                        self._last_fuel_used = fuel_used
                     except Exception:
                         # If anything goes wrong, skip fuel_used for this update
                         pass
@@ -1129,6 +1128,7 @@ class MainWindow(QMainWindow):
                 pid = self._active_pirep_id
                 if not pid:
                     return
+                self._last_
                 self.client.post_acars_position(pid, positions=[pos])
             except Exception:
                 pass
@@ -1226,24 +1226,20 @@ class MainWindow(QMainWindow):
             self.refresh_airports()
             self.refresh_pireps()
         else:
-            # No cached user; fallback to network login
+            # No cached user; fall back to network login
             self.on_login_requested(base_url, api_key)
 
 
 def main():
-    """Main application entry point"""
     app = QApplication(sys.argv)
 
-    # Set application properties
     app.setApplicationName("phpVMS API Client")
     app.setApplicationVersion("1.0.0")
     app.setOrganizationName("phpVMS")
 
-    # Create and show main window
     window = MainWindow()
     window.show()
 
-    # Attempt auto-login if cached credentials exist
     settings = QSettings()
     cached_base_url = settings.value("api/base_url", "")
     cached_api_key = settings.value("api/api_key", "")

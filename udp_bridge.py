@@ -149,7 +149,6 @@ class UdpBridge:
         if isinstance(pos, dict):
             with self._lock:
                 self._last_position = {k: pos.get(k) for k in ("lat", "lon", "altitude_msl", "altitude_agl", "heading", "gs", "sim_time", "distance")}
-        # Track latest dist/fuel if provided
         try:
             dist_val = pos.get("distance")
             fuel_val = payload.get("fuel")

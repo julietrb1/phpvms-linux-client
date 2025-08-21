@@ -90,6 +90,7 @@ dataref("fuel_1", "sim/cockpit2/fuel/fuel_quantity", "readonly", 0)
 dataref("fuel_2", "sim/cockpit2/fuel/fuel_quantity", "readonly", 1)
 dataref("fuel_3", "sim/cockpit2/fuel/fuel_quantity", "readonly", 2)
 dataref("fuel_4", "sim/cockpit2/fuel/fuel_quantity", "readonly", 3)
+dataref("flight_time_sec", "sim/time/total_flight_time_sec", "readonly", 3)
 
 -- =====================
 -- Helpers
@@ -138,6 +139,8 @@ local function build_payload()
       distance = nautical_miles(dist_m),
     },
     fuel = fuel_1 + fuel_2 + fuel_3 + fuel_4,
+    flight_time = flight_time_sec / 60,
+
   }
   return payload
 end
