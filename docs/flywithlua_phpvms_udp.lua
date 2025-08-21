@@ -94,6 +94,7 @@ dataref("flight_time_sec", "sim/time/total_flight_time_sec", "readonly", 3)
 dataref("trk_mag", "sim/flightmodel/position/hpath", "readonly")
 dataref("ias", "sim/flightmodel/position/indicated_airspeed", "readonly")
 dataref("vs_ms", "sim/flightmodel/position/vh_ind", "readonly")
+dataref("alt_agl", "sim/flightmodel/position/y_agl", "readonly")
 -- =====================
 -- Helpers
 -- =====================
@@ -140,6 +141,7 @@ local function build_payload()
       lat = LATITUDE,
       lon = LONGITUDE,
       altitude_msl = feet(ELEVATION),
+      altitude_agl = feet(alt_agl),
       gs = knots(gs_ms),
       sim_time = now(),
       distance = nautical_miles(dist_m),
