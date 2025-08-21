@@ -95,6 +95,7 @@ dataref("trk_mag", "sim/flightmodel/position/hpath", "readonly")
 dataref("ias", "sim/flightmodel/position/indicated_airspeed", "readonly")
 dataref("vs_ms", "sim/flightmodel/position/vh_ind", "readonly")
 dataref("alt_agl", "sim/flightmodel/position/y_agl", "readonly")
+dataref("zulu", "sim/time/zulu_time_sec", "readonly")
 -- =====================
 -- Helpers
 -- =====================
@@ -143,7 +144,7 @@ local function build_payload()
       altitude_msl = feet(ELEVATION),
       altitude_agl = feet(alt_agl),
       gs = knots(gs_ms),
-      sim_time = now(),
+      sim_time = zulu,
       distance = nautical_miles(dist_m),
       heading = trk_mag,
       ias = ias,
@@ -151,7 +152,6 @@ local function build_payload()
     },
     fuel = fuel_1 + fuel_2 + fuel_3 + fuel_4,
     flight_time = flight_time_sec / 60,
-
   }
   return payload
 end

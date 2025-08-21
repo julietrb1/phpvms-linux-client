@@ -1094,8 +1094,8 @@ class MainWindow(QMainWindow):
                 self._udp_bridge.stop()
             except Exception:
                 pass
-        # Create/start new with handler callbacks; the handlers consult self._active_pirep_id internally
         def _status_handler(status: str, distance: Optional[float], fuel: Optional[float], flight_time: Optional[float]):
+            flight_time = int(flight_time) if flight_time is not None else None
             try:
                 pid = self._active_pirep_id
                 if not pid:
