@@ -1128,7 +1128,6 @@ class MainWindow(QMainWindow):
                 pass
 
         def _position_handler(pos: Dict[str, Any]):
-            pos["sim_time"] = datetime.fromtimestamp(float(pos["sim_time"])).strftime("%Y-%m-%dT%H:%M:%SZ")
             try:
                 pid = self._active_pirep_id
                 if not pid:

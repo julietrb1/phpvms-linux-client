@@ -2,6 +2,7 @@ import json
 import socket
 import threading
 import time
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 
@@ -143,6 +144,7 @@ class UdpBridge:
                 self._append_log(self._last_error)
             return
 
+        payload["position"]["sim_time"] = datetime.fromtimestamp(float(payload["position"]["sim_time"])).strftime("%Y-%m-%dT%H:%M:%SZ")
         status = payload.get("status")
         if isinstance(status, str) and status:
             with self._lock:
