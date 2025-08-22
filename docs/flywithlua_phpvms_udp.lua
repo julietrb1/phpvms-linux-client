@@ -121,6 +121,10 @@ local status = ""
 local timer_start = 0
 local final_time_sec = 0
 
+local function calculate_minutes()
+    return math.floor((flight_time_sec - timer_start) / 60)
+end
+
 -- INITIATED = 'INI';
 -- SCHEDULED = 'SCH';
 -- BOARDING = 'BST';
@@ -178,7 +182,7 @@ local function detect_status()
     elseif status == "LDG" and on_ground == 1 and gs_ms < 5 and alt_agl_m < 10 then
         return "LAN"
     elseif status == "LAN" and on_ground == 1 and gs_ms < 1 then
-        final_time_sec = flight_time_sec - timer_start
+        final_time_sec = calculate_minutes()
         return "ARR"
     elseif status == "ARR" and eng1_running == 0 then
         return "BST"
@@ -186,7 +190,6 @@ local function detect_status()
 
     return status
 end
-
 
 local function osTimeToISO8601Zulu(timestamp)
     return os.date("!%Y-%m-%dT%H:%M:%SZ", timestamp)
@@ -210,7 +213,7 @@ local function build_payload()
       vs = math.floor(fpm(vs_ms)),
     },
     fuel = math.floor(fuel_1 + fuel_2 + fuel_3 + fuel_4),
-    flight_time = final_time_sec ~= 0 and final_time_sec or flight_time_sec - timer_start,
+    flight_time = final_time_sec ~= 0 and final_time_sec or calculate_minutes(),
   }
   return payload
 end
