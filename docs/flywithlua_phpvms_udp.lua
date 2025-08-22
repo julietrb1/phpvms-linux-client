@@ -144,7 +144,7 @@ end
 -- GRND_RTRN = 'GRT'; // Ground return
 -- TAXI = 'TXI'; // Taxi
 -- TAKEOFF = 'TOF';
--- INIT_CLIM = 'ICL';
+-- INIT_CLIM = 'ICL'; // NOT VALID!
 -- AIRBORNE = 'TKO';
 -- ENROUTE = 'ENR';
 -- DIVERTED = 'DV';
@@ -153,7 +153,7 @@ end
 -- ON_FINAL = 'FIN';
 -- LANDING = 'LDG';
 -- LANDED = 'LAN';
--- ON_BLOCK = 'ONB';
+-- ON_BLOCK = 'ONB'; // NOT VALID!
 -- ARRIVED = 'ARR';
 -- CANCELLED = 'DX';
 -- EMERG_DESCENT = 'EMG';
@@ -184,12 +184,10 @@ local function detect_status()
         final_distance = 0
         return "TOF"
     elseif (status == "TOF" or status == "LDG" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
-        return "ICL"
-    elseif status == "ICL" and vs_ms < 1 then
         return "ENR"
     elseif status == "ENR" and alt_agl_m < 3000 and vs_ms < -5 then
         return "TEN"
-    elseif (status == "TEN" or status == "ICL") and on_ground == 0 and alt_agl_m < 500 and vs_ms < -1 then
+    elseif (status == "TEN" or status == "ENR") and on_ground == 0 and alt_agl_m < 500 and vs_ms < -1 then
         return "LDG"
     elseif status == "LDG" and on_ground == 1 and gs_ms < 5 and alt_agl_m < 10 then
         return "LAN"
