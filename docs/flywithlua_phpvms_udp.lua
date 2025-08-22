@@ -167,7 +167,7 @@ local function detect_status()
     end
 
     -- Fallback: Return the last status or handle unmapped cases
-    print("Warning: phpVMS status fallback. current_status:" .. current_status .. ", on_ground:" .. on_ground .. ", eng1_running:" .. eng1_running .. ", gs_ms:" .. gs_ms .. ", alt_agl" .. alt_agl)
+    print("Warning: phpVMS status fallback. current_status:" .. current_status .. ", on_ground:" .. on_ground == 1 .. ", eng1_running:" .. eng1_running == 0 .. ", gs_ms:" .. gs_ms < 1 .. ", alt_agl" .. alt_agl < 10)
     if on_ground == 1 and gs_ms < 1 then
         return "ARR"
     elseif on_ground == 1 and gs_ms >= 1.5 then
