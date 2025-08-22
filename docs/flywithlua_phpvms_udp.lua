@@ -173,7 +173,7 @@ end
 
 local function build_payload()
   local status = detect_status()
-  print("Detected " .. status .. ", sending " .. )
+  print("Detected " .. internal_status .. ", sending " .. submitted_status)
   local payload = {
     status = status,
     position = {
