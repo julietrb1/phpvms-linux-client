@@ -180,6 +180,18 @@ local function detect_status()
         print("ALT AGL high")
     end
 
+    if on_ground == 1 then
+        print("ON GND")
+    else
+        print("NOT ON GND")
+    end
+
+    if gs_ms < 1 then
+        print("GS low")
+    else
+        print("GS high")
+    end
+
     if on_ground == 1 and gs_ms < 1 then
         return "ARR"
     elseif on_ground == 1 and gs_ms >= 1.5 then
@@ -200,6 +212,7 @@ end
 
 local function build_payload()
   local status = detect_status()
+  print("Detected " .. status)
   local payload = {
     status = status,
     position = {
