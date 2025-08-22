@@ -191,7 +191,7 @@ local function build_payload()
   status = detect_status()
 
   local payload = {
-    status = paused and "PSD" or status,
+    status = paused == 1 and "PSD" or status,
     position = {
       lat = LATITUDE,
       lon = LONGITUDE,
