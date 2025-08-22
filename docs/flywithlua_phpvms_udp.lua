@@ -119,6 +119,7 @@ end
 
 local status = ""
 local timer_start = 0
+local final_time_sec = 0
 
 -- INITIATED = 'INI';
 -- SCHEDULED = 'SCH';
@@ -148,7 +149,8 @@ local timer_start = 0
 
 local function detect_status()
     if internal_status == "" or status == "" then
-      timer_start = os.clock()
+        timer_start = flight_time_sec
+        final_time_sec = 0
       if on_ground == 1 and eng1_running == 0 then
           return "BST"
       elseif on_ground == 1 and eng1_running == 1 then
@@ -162,6 +164,8 @@ local function detect_status()
     if status == "BST" and on_ground == 1 and eng1_running == 1 then
         return "TXI"
     elseif status == "TXI" and on_ground == 1 and ias > 50 then
+        timer_start = flight_time_sec
+        final_time_sec = 0
         return "TOF"
     elseif (status == "TOF" or status == "LDG" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
         return "ICL"
@@ -174,6 +178,7 @@ local function detect_status()
     elseif status == "LDG" and on_ground == 1 and gs_ms < 5 and alt_agl_m < 10 then
         return "LAN"
     elseif status == "LAN" and on_ground == 1 and gs_ms < 1 then
+        final_time_sec = flight_time_sec - timer_start
         return "ARR"
     elseif status == "ARR" and eng1_running == 0 then
         return "BST"
@@ -190,6 +195,8 @@ end
 local function build_payload()
   status = detect_status()
 
+  if final_time_sec != 0 then
+
   local payload = {
     status = paused == 1 and "PSD" or status,
     position = {
@@ -205,7 +212,7 @@ local function build_payload()
       vs = math.floor(fpm(vs_ms)),
     },
     fuel = math.floor(fuel_1 + fuel_2 + fuel_3 + fuel_4),
-    flight_time = math.floor(flight_time_sec / 60),
+    flight_time = final_time_sec != 0 and final_time_sec or flight_time_sec - timer_start,
   }
   return payload
 end
