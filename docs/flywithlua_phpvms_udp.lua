@@ -163,7 +163,7 @@ local function detect_status()
         return "TXI"
     elseif status == "TXI" and on_ground == 1 and ias > 50 then
         return "TOF"
-    elseif (status == "TOF" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
+    elseif (status == "TOF" or status == "LDG" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
         return "ICL"
     elseif status == "ICL" and vs_ms < 1 then
         return "ENR"
