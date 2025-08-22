@@ -185,9 +185,11 @@ local function detect_status()
         return "TOF"
     elseif (status == "TOF" or status == "LDG" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
         return "ENR"
-    elseif status == "ENR" and alt_agl_m < 3000 and vs_ms < -5 then
+    elseif status == "ENR" and alt_agl_m < 1829 and vs_ms < -5 then -- 6,000 ft AGL
         return "TEN"
-    elseif (status == "TEN" or status == "ENR") and on_ground == 0 and alt_agl_m < 500 and vs_ms < -1 then
+    elseif status == "TEN" and alt_agl_m < 305 and vs_ms < -5 then -- 1,000 ft AGL
+        return "FIN"
+    elseif (status == "TEN" or status == "FIN" or status == "ENR") and on_ground == 0 and alt_agl_m < 46 and vs_ms < -1 then -- 150 ft AGL
         return "LDG"
     elseif status == "LDG" and on_ground == 1 and gs_ms < 5 and alt_agl_m < 10 then
         return "LAN"
