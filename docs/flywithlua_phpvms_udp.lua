@@ -119,10 +119,16 @@ end
 
 local status = ""
 local timer_start = 0
+local distance_start = 0
 local final_time_sec = 0
+local final_distance = 0
 
 local function calculate_minutes()
     return math.floor((flight_time_sec - timer_start) / 60)
+end
+
+local function calculate_distance()
+    return math.floor(nautical_miles(dist_m - distance_start))
 end
 
 -- INITIATED = 'INI';
@@ -155,6 +161,8 @@ local function detect_status()
     if internal_status == "" or status == "" then
         timer_start = flight_time_sec
         final_time_sec = 0
+        distance_start = dist_m
+        final_distance = 0
       if on_ground == 1 and eng1_running == 0 then
           return "BST"
       elseif on_ground == 1 and eng1_running == 1 then
@@ -170,6 +178,8 @@ local function detect_status()
     elseif status == "TXI" and on_ground == 1 and ias > 50 then
         timer_start = flight_time_sec
         final_time_sec = 0
+        distance_start = dist_m
+        final_distance = 0
         return "TOF"
     elseif (status == "TOF" or status == "LDG" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
         return "ICL"
@@ -183,6 +193,7 @@ local function detect_status()
         return "LAN"
     elseif status == "LAN" and on_ground == 1 and gs_ms < 1 then
         final_time_sec = calculate_minutes()
+        final_distance = calculate_distance()
         return "ARR"
     elseif status == "ARR" and eng1_running == 0 then
         return "BST"
@@ -207,7 +218,7 @@ local function build_payload()
       altitude_agl = math.max(0, math.ceil(feet(alt_agl_m))),
       gs = math.floor(knots(gs_ms)),
       sim_time = osTimeToISO8601Zulu(os.time()),
-      distance = math.floor(nautical_miles(dist_m)),
+      distance = final_distance ~= 0 and final_distance or calculate_distance(),
       heading = math.floor(trk_mag),
       ias = math.max(0, math.floor(ias)),
       vs = math.floor(fpm(vs_ms)),
