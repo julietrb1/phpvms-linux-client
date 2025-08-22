@@ -165,7 +165,7 @@ local function detect_status()
         return "TOF"
     elseif (status == "TOF" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
         return "ICL"
-    elseif status == "ICL" and vs_ms > 1 then
+    elseif status == "ICL" and vs_ms < 1 then
         return "ENR"
     elseif status == "ENR" and alt_agl_m < 3000 and vs_ms < -5 then
         return "TEN"
