@@ -117,7 +117,8 @@ local function fpm(ms)
     return (ms or 0) * 196.85
 end
 
-local current_status = "BOARDING"
+local internal_status = "RDY_START"
+local submitted_status = "BST"
 local timer_start = 0
 
 local function detect_status()
@@ -125,48 +126,44 @@ local function detect_status()
         return "PSD"
     end
 
-    if current_status == "BOARDING" and on_ground == 1 and eng1_running == 0 and gs_ms < 1 and alt_agl < 10 then
-        current_status = "RDY_START"
-        return "BST"
-    elseif current_status == "RDY_START" and on_ground == 1 and eng1_running == 1 and gs_ms < 1 then
-        current_status = "DEPARTED"
+    if internal_status == "RDY_START" and on_ground == 1 and eng1_running == 1 and gs_ms < 1 then
+        internal_status = "DEPARTED"
         timer_start = os.clock()
         return "TXI"
-    elseif current_status == "DEPARTED" and on_ground == 1 and gs_ms > 5 and (os.clock() - timer_start >= 5 or timer_start == 0) then
-        current_status = "TAXI"
+    elseif internal_status == "DEPARTED" and on_ground == 1 and gs_ms > 5 and (os.clock() - timer_start >= 5 or timer_start == 0) then
+        internal_status = "TAXI"
         timer_start = 0
         return "TXI"
-    elseif current_status == "TAXI" and on_ground == 1 and gs_ms > 5 and ias > 10 then
+    elseif internal_status == "TAXI" and on_ground == 1 and gs_ms > 5 and ias > 10 then
         -- No change in return; wait for next condition
-    elseif current_status == "TAXI" and on_ground == 1 and ias > 50 and vs_ms > 5 then
-        current_status = "TAKEOFF"
+    elseif internal_status == "TAXI" and on_ground == 1 and ias > 50 and vs_ms > 5 then
+        internal_status = "TAKEOFF"
         return "TOF"
-    elseif current_status == "TAKEOFF" and on_ground == 0 and alt_agl > 100 and vs_ms > 10 then
-        current_status = "AIRBORNE"
+    elseif internal_status == "TAKEOFF" and on_ground == 0 and alt_agl > 100 and vs_ms > 10 then
+        internal_status = "AIRBORNE"
         if on_ground == 0 and alt_agl > 1000 and gs_ms > 50 then  -- Check for ENROUTE skip
-            current_status = "ENROUTE"
-            return "ENR"
+            internal_status = "ENROUTE"
         end
         return "ENR"
-    elseif current_status == "ENROUTE" and on_ground == 0 and alt_agl < 5000 and vs_ms < -5 and radalt_ft < 2000 then
-        current_status = "APPROACH"
+    elseif internal_status == "ENROUTE" and on_ground == 0 and alt_agl < 5000 and vs_ms < -5 and radalt_ft < 2000 then
+        internal_status = "APPROACH"
         -- No direct return; fall through
-    elseif current_status == "APPROACH" and on_ground == 0 and alt_agl < 100 and vs_ms < -1 and radalt_ft < 50 then
-        current_status = "LANDING"
+    elseif internal_status == "APPROACH" and on_ground == 0 and alt_agl < 100 and vs_ms < -1 and radalt_ft < 50 then
+        internal_status = "LANDING"
         return "TOF"
-    elseif current_status == "LANDING" and on_ground == 1 and gs_ms < 5 and alt_agl < 10 then
-        current_status = "LANDED"
+    elseif internal_status == "LANDING" and on_ground == 1 and gs_ms < 5 and alt_agl < 10 then
+        internal_status = "LANDED"
         timer_start = os.clock()
         return "ARR"
-    elseif current_status == "LANDED" and on_ground == 1 and gs_ms < 1 and (os.clock() - timer_start >= 10 or timer_start == 0) then
-        current_status = "ON_BLOCK"
+    elseif internal_status == "LANDED" and on_ground == 1 and gs_ms < 1 and (os.clock() - timer_start >= 10 or timer_start == 0) then
+        internal_status = "ON_BLOCK"
         return "ARR"
-    elseif current_status == "ON_BLOCK" and on_ground == 1 and gs_ms < 1 and flight_time_sec > 60 then
-        current_status = "ARRIVED"
+    elseif internal_status == "ON_BLOCK" and on_ground == 1 and gs_ms < 1 and flight_time_sec > 60 then
+        internal_status = "ARRIVED"
         return "ARR"
     end
 
-    return current_status
+    return submitted_status
 end
 
 
@@ -176,7 +173,7 @@ end
 
 local function build_payload()
   local status = detect_status()
-  print("Detected " .. status)
+  print("Detected " .. status .. ", sending " .. )
   local payload = {
     status = status,
     position = {
