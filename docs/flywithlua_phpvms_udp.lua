@@ -194,7 +194,7 @@ local function build_payload()
       lon = LONGITUDE,
       altitude_msl = math.ceil(feet(ELEVATION)),
       altitude_agl = math.max(0, math.ceil(feet(alt_agl))),
-      gs = knots(gs_ms),
+      gs = math.floor(knots(gs_ms)),
       sim_time = osTimeToISO8601Zulu(os.time()),
       distance = math.floor(nautical_miles(dist_m)),
       heading = math.floor(trk_mag),
