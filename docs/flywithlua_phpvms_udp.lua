@@ -5,7 +5,7 @@
 -- =====================
 -- User configuration
 -- =====================
-local HOST = "127.0.0.1"
+local HOST = "10.0.0.132"
 local PORT = 47777         -- must match the Python client's UDP bridge port
 local SEND_INTERVAL = 0.5  -- minimum seconds between sends (coarse throttle)
 
@@ -94,7 +94,7 @@ dataref("flight_time_sec", "sim/time/total_flight_time_sec", "readonly", 3)
 dataref("trk_mag", "sim/flightmodel/position/hpath", "readonly")
 dataref("ias", "sim/flightmodel/position/indicated_airspeed", "readonly")
 dataref("vs_ms", "sim/flightmodel/position/vh_ind", "readonly")
-dataref("alt_agl", "sim/flightmodel/position/y_agl", "readonly")
+dataref("alt_agl_m", "sim/flightmodel/position/y_agl", "readonly")
 
 -- =====================
 -- Helpers
@@ -117,53 +117,69 @@ local function fpm(ms)
     return (ms or 0) * 196.85
 end
 
-local internal_status = "RDY_START"
-local submitted_status = "BST"
+local status = ""
 local timer_start = 0
 
+-- INITIATED = 'INI';
+-- SCHEDULED = 'SCH';
+-- BOARDING = 'BST';
+-- RDY_START = 'RDT';
+-- PUSHBACK_TOW = 'PBT';
+-- DEPARTED = 'OFB'; // Off block
+-- RDY_DEICE = 'DIR';
+-- STRT_DEICE = 'DIC';
+-- GRND_RTRN = 'GRT'; // Ground return
+-- TAXI = 'TXI'; // Taxi
+-- TAKEOFF = 'TOF';
+-- INIT_CLIM = 'ICL';
+-- AIRBORNE = 'TKO';
+-- ENROUTE = 'ENR';
+-- DIVERTED = 'DV';
+-- APPROACH = 'TEN';
+-- APPROACH_ICAO = 'APR';
+-- ON_FINAL = 'FIN';
+-- LANDING = 'LDG';
+-- LANDED = 'LAN';
+-- ON_BLOCK = 'ONB';
+-- ARRIVED = 'ARR';
+-- CANCELLED = 'DX';
+-- EMERG_DESCENT = 'EMG';
+-- PAUSED = 'PSD';
+
 local function detect_status()
-    if paused == 1 then
-        return "PSD"
+    if internal_status == "" or status == "" then
+      timer_start = os.clock()
+      if on_ground == 1 and eng1_running == 0 then
+          return "BST"
+      elseif on_ground == 1 and eng1_running == 1 then
+          return "TXI"
+      elseif on_ground == 0 and alt_agl_m > 100 then
+          return "ENR"
+      end
     end
 
-    if internal_status == "RDY_START" and on_ground == 1 and eng1_running == 1 and gs_ms < 1 then
-        internal_status = "DEPARTED"
-        timer_start = os.clock()
+
+    if status == "BST" and on_ground == 1 and eng1_running == 1 then
         return "TXI"
-    elseif internal_status == "DEPARTED" and on_ground == 1 and gs_ms > 5 and (os.clock() - timer_start >= 5 or timer_start == 0) then
-        internal_status = "TAXI"
-        timer_start = 0
-        return "TXI"
-    elseif internal_status == "TAXI" and on_ground == 1 and gs_ms > 5 and ias > 10 then
-        -- No change in return; wait for next condition
-    elseif internal_status == "TAXI" and on_ground == 1 and ias > 50 and vs_ms > 5 then
-        internal_status = "TAKEOFF"
+    elseif status == "TXI" and on_ground == 1 and ias > 50 then
         return "TOF"
-    elseif internal_status == "TAKEOFF" and on_ground == 0 and alt_agl > 100 and vs_ms > 10 then
-        internal_status = "AIRBORNE"
-        if on_ground == 0 and alt_agl > 1000 and gs_ms > 50 then  -- Check for ENROUTE skip
-            internal_status = "ENROUTE"
-        end
+    elseif (status == "TOF" or status == "LDG") and on_ground == 0 and alt_agl_m > 100 and vs_ms > 10 then
+        return "ICL"
+    elseif status == "ICL" and vs_ms > 1 then
         return "ENR"
-    elseif internal_status == "ENROUTE" and on_ground == 0 and alt_agl < 5000 and vs_ms < -5 and radalt_ft < 2000 then
-        internal_status = "APPROACH"
-        -- No direct return; fall through
-    elseif internal_status == "APPROACH" and on_ground == 0 and alt_agl < 100 and vs_ms < -1 and radalt_ft < 50 then
-        internal_status = "LANDING"
-        return "TOF"
-    elseif internal_status == "LANDING" and on_ground == 1 and gs_ms < 5 and alt_agl < 10 then
-        internal_status = "LANDED"
-        timer_start = os.clock()
-        return "ARR"
-    elseif internal_status == "LANDED" and on_ground == 1 and gs_ms < 1 and (os.clock() - timer_start >= 10 or timer_start == 0) then
-        internal_status = "ON_BLOCK"
-        return "ARR"
-    elseif internal_status == "ON_BLOCK" and on_ground == 1 and gs_ms < 1 and flight_time_sec > 60 then
-        internal_status = "ARRIVED"
+    elseif status == "ENR" and alt_agl_m < 3000 and vs_ms < -5 then
+        return "TEN"
+    elseif (status == "TEN" or status == "ICL") and on_ground == 0 and alt_agl_m < 500 and vs_ms < -1 then
+        return "LDG"
+    elseif status == "LDG" and on_ground == 1 and gs_ms < 5 and alt_agl_m < 10 then
+        return "LAN"
+    elseif status == "LAN" and on_ground == 1 and gs_ms < 1 then
+        return "ONB"
+    elseif status == "ONB" and eng1_running == 0 then
         return "ARR"
     end
 
-    return submitted_status
+    return status
 end
 
 
@@ -172,15 +188,15 @@ local function osTimeToISO8601Zulu(timestamp)
 end
 
 local function build_payload()
-  submitted_status = detect_status()
-  print("Detected " .. internal_status .. ", sending " .. submitted_status)
+  status = detect_status()
+
   local payload = {
-    status = submitted_status,
+    status = paused and "PSD" or status,
     position = {
       lat = LATITUDE,
       lon = LONGITUDE,
       altitude_msl = math.ceil(feet(ELEVATION)),
-      altitude_agl = math.max(0, math.ceil(feet(alt_agl))),
+      altitude_agl = math.max(0, math.ceil(feet(alt_agl_m))),
       gs = math.floor(knots(gs_ms)),
       sim_time = osTimeToISO8601Zulu(os.time()),
       distance = math.floor(nautical_miles(dist_m)),
