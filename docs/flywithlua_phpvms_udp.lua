@@ -159,9 +159,9 @@ end
 
 local function detect_status()
     if internal_status == "" or status == "" then
-        timer_start = flight_time_sec
+        timer_start = 0
         final_time_sec = 0
-        distance_start = dist_m
+        distance_start = 0
         final_distance = 0
       if on_ground == 1 and eng1_running == 0 then
           return "BST"
