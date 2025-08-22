@@ -176,7 +176,7 @@ local function detect_status()
     elseif status == "LAN" and on_ground == 1 and gs_ms < 1 then
         return "ONB"
     elseif status == "ONB" and eng1_running == 0 then
-        return "ARR"
+        return "BST"
     end
 
     return status
