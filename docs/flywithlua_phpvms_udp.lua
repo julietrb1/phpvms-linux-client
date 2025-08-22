@@ -125,10 +125,10 @@ local function detect_status()
         return "PSD"
     end
 
-    if current_status == "BOARDING" and on_ground == 1 and not eng1_running and gs_ms < 1 and alt_agl < 10 then
+    if current_status == "BOARDING" and on_ground == 1 and eng1_running == 0 and gs_ms < 1 and alt_agl < 10 then
         current_status = "RDY_START"
         return "BST"
-    elseif current_status == "RDY_START" and on_ground == 1 and eng1_running and gs_ms < 1 then
+    elseif current_status == "RDY_START" and on_ground == 1 and eng1_running == 1 and gs_ms < 1 then
         current_status = "DEPARTED"
         timer_start = os.clock()
         return "TXI"
