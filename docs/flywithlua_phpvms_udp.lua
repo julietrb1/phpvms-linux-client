@@ -172,10 +172,10 @@ local function osTimeToISO8601Zulu(timestamp)
 end
 
 local function build_payload()
-  local status = detect_status()
+  submitted_status = detect_status()
   print("Detected " .. internal_status .. ", sending " .. submitted_status)
   local payload = {
-    status = status,
+    status = submitted_status,
     position = {
       lat = LATITUDE,
       lon = LONGITUDE,
