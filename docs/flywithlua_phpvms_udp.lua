@@ -125,10 +125,10 @@ local function detect_status()
         return "PSD"
     end
 
-    if current_status == "BOARDING" and on_ground == 1 and eng1_running == 0 and gs_ms == 0 and alt_agl < 10 then
+    if current_status == "BOARDING" and on_ground == 1 and not eng1_running and gs_ms < 1 and alt_agl < 10 then
         current_status = "RDY_START"
         return "BST"
-    elseif current_status == "RDY_START" and on_ground == 1 and eng1_running == 1 and gs_ms == 0 then
+    elseif current_status == "RDY_START" and on_ground == 1 and eng1_running and gs_ms < 1 then
         current_status = "DEPARTED"
         timer_start = os.clock()
         return "TXI"
@@ -158,10 +158,10 @@ local function detect_status()
         current_status = "LANDED"
         timer_start = os.clock()
         return "ARR"
-    elseif current_status == "LANDED" and on_ground == 1 and gs_ms == 0 and (os.clock() - timer_start >= 10 or timer_start == 0) then
+    elseif current_status == "LANDED" and on_ground == 1 and gs_ms < 1 and (os.clock() - timer_start >= 10 or timer_start == 0) then
         current_status = "ON_BLOCK"
         return "ARR"
-    elseif current_status == "ON_BLOCK" and on_ground == 1 and gs_ms == 0 and flight_time_sec > 60 then
+    elseif current_status == "ON_BLOCK" and on_ground == 1 and gs_ms < 1 and flight_time_sec > 60 then
         current_status = "ARRIVED"
         return "ARR"
     end
