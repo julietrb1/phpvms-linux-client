@@ -95,11 +95,11 @@ dataref("trk_mag", "sim/flightmodel/position/hpath", "readonly")
 dataref("ias", "sim/flightmodel/position/indicated_airspeed", "readonly")
 dataref("vs_ms", "sim/flightmodel/position/vh_ind", "readonly")
 dataref("alt_agl", "sim/flightmodel/position/y_agl", "readonly")
+
 -- =====================
 -- Helpers
 -- =====================
 local last_sent = 0
-local last_status = "INI"
 
 local function knots(ms)
   return (ms or 0) * 1.94384
@@ -117,24 +117,71 @@ local function fpm(ms)
     return (ms or 0) * 196.85
 end
 
-local function detect_status()
-  if paused == 1 then return "PSD" end
-  if on_ground == 1 and eng1_running == 0 then return "INI" end
-  if on_ground == 1 and eng1_running == 1 and knots(gs_ms) < 1 then return "BST" end
-  if on_ground == 1 and knots(gs_ms) >= 1.5 then return "TXI" end
-  if on_ground == 0 and radalt_ft < 100 then return "TOF" end
-  if on_ground == 0 and radalt_ft >= 100 then return "ENR" end
-  if on_ground == 1 and knots(gs_ms) < 1 then return "ARR" end
-  return last_status
-end
+local current_status = "BOARDING"
+local timer_start = 0
 
-local function now()
-  return os.time()
+local function detect_status()
+    if paused == 1 then
+        return "PSD"
+    end
+
+    if current_status == "BOARDING" and on_ground == 1 and eng1_running == 0 and gs_ms == 0 and alt_agl < 10 then
+        current_status = "RDY_START"
+        return "BST"
+    elseif current_status == "RDY_START" and on_ground == 1 and eng1_running == 1 and gs_ms == 0 then
+        current_status = "DEPARTED"
+        timer_start = os.clock()
+        return "TXI"
+    elseif current_status == "DEPARTED" and on_ground == 1 and gs_ms > 5 and (os.clock() - timer_start >= 5 or timer_start == 0) then
+        current_status = "TAXI"
+        timer_start = 0
+        return "TXI"
+    elseif current_status == "TAXI" and on_ground == 1 and gs_ms > 5 and ias > 10 then
+        -- No change in return; wait for next condition
+    elseif current_status == "TAXI" and on_ground == 1 and ias > 50 and vs_ms > 5 then
+        current_status = "TAKEOFF"
+        return "TOF"
+    elseif current_status == "TAKEOFF" and on_ground == 0 and alt_agl > 100 and vs_ms > 10 then
+        current_status = "AIRBORNE"
+        if on_ground == 0 and alt_agl > 1000 and gs_ms > 50 then  -- Check for ENROUTE skip
+            current_status = "ENROUTE"
+            return "ENR"
+        end
+        return "ENR"
+    elseif current_status == "ENROUTE" and on_ground == 0 and alt_agl < 5000 and vs_ms < -5 and radalt_ft < 2000 then
+        current_status = "APPROACH"
+        -- No direct return; fall through
+    elseif current_status == "APPROACH" and on_ground == 0 and alt_agl < 100 and vs_ms < -1 and radalt_ft < 50 then
+        current_status = "LANDING"
+        return "TOF"
+    elseif current_status == "LANDING" and on_ground == 1 and gs_ms < 5 and alt_agl < 10 then
+        current_status = "LANDED"
+        timer_start = os.clock()
+        return "ARR"
+    elseif current_status == "LANDED" and on_ground == 1 and gs_ms == 0 and (os.clock() - timer_start >= 10 or timer_start == 0) then
+        current_status = "ON_BLOCK"
+        return "ARR"
+    elseif current_status == "ON_BLOCK" and on_ground == 1 and gs_ms == 0 and flight_time_sec > 60 then
+        current_status = "ARRIVED"
+        return "ARR"
+    end
+
+    -- Fallback: Return the last status or handle unmapped cases
+    if on_ground == 1 and gs_ms < 1 then
+        return "ARR"
+    elseif on_ground == 1 and gs_ms >= 1.5 then
+        return "TXI"
+    elseif on_ground == 0 and radalt_ft < 100 then
+        return "TOF"
+    elseif on_ground == 0 and radalt_ft >= 100 then
+        return "ENR"
+    end
+
+    return current_status
 end
 
 local function build_payload()
   local status = detect_status()
-  last_status = status
   local payload = {
     status = status,
     position = {
@@ -143,7 +190,7 @@ local function build_payload()
       altitude_msl = feet(ELEVATION),
       altitude_agl = feet(alt_agl),
       gs = knots(gs_ms),
-      sim_time = now(),
+      sim_time = os.time(),
       distance = nautical_miles(dist_m),
       heading = trk_mag,
       ias = ias,
@@ -157,7 +204,7 @@ end
 
 local function send_payload()
   if not json then return end
-  local t = now()
+  local t = os.time()
   if (t - last_sent) < SEND_INTERVAL then return end
   last_sent = t
   local body = json.encode(build_payload())
