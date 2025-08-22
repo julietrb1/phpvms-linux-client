@@ -195,8 +195,6 @@ end
 local function build_payload()
   status = detect_status()
 
-  if final_time_sec != 0 then
-
   local payload = {
     status = paused == 1 and "PSD" or status,
     position = {
@@ -212,7 +210,7 @@ local function build_payload()
       vs = math.floor(fpm(vs_ms)),
     },
     fuel = math.floor(fuel_1 + fuel_2 + fuel_3 + fuel_4),
-    flight_time = final_time_sec != 0 and final_time_sec or flight_time_sec - timer_start,
+    flight_time = final_time_sec ~= 0 and final_time_sec or flight_time_sec - timer_start,
   }
   return payload
 end
