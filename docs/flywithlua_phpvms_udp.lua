@@ -180,6 +180,11 @@ local function detect_status()
     return current_status
 end
 
+
+local function osTimeToISO8601Zulu(timestamp)
+    return os.date("!%Y-%m-%dT%H:%M:%SZ", timestamp)
+end
+
 local function build_payload()
   local status = detect_status()
   local payload = {
@@ -187,17 +192,17 @@ local function build_payload()
     position = {
       lat = LATITUDE,
       lon = LONGITUDE,
-      altitude_msl = feet(ELEVATION),
-      altitude_agl = feet(alt_agl),
+      altitude_msl = math.ceil(feet(ELEVATION)),
+      altitude_agl = math.max(0, math.ceil(feet(alt_agl))),
       gs = knots(gs_ms),
-      sim_time = os.time(),
+      sim_time = osTimeToISO8601Zulu(os.time()),
       distance = nautical_miles(dist_m),
       heading = trk_mag,
       ias = ias,
       vs = fpm(vs_ms),
     },
-    fuel = fuel_1 + fuel_2 + fuel_3 + fuel_4,
-    flight_time = flight_time_sec / 60,
+    fuel = math.floor(fuel_1 + fuel_2 + fuel_3 + fuel_4),
+    flight_time = math.floor(flight_time_sec / 60),
   }
   return payload
 end
