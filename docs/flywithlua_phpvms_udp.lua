@@ -118,16 +118,18 @@ local function fpm(ms)
 end
 
 local status = ""
-local timer_start = 0
-local distance_start = 0
+local timer_start = -1
 local final_time_sec = 0
+local distance_start = -1
 local final_distance = 0
 
 local function calculate_minutes()
+    if timer_start == -1 then return 0 end
     return math.floor((flight_time_sec - timer_start) / 60)
 end
 
 local function calculate_distance()
+    if distance_start == -1 then return 0 end
     return math.floor(nautical_miles(dist_m - distance_start))
 end
 
